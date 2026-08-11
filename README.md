@@ -62,6 +62,30 @@ There are no commands and no prefix. Every message is read; the overwhelming
 majority are conversation and the bot stays silent. It only replies when it
 actually changed something.
 
+### The link preview
+
+The link the bot posts renders as a card showing the list as a checklist, so
+the group can read it without opening anything. Tapping it opens the real,
+tickable list in WhatsApp's in-app browser.
+
+That card is a generated image (`app/l/[slug]/opengraph-image.tsx`) plus Open
+Graph tags, and messages are sent with `preview_url: true` — without that flag
+WhatsApp shows the link as plain text and never fetches the card.
+
+WhatsApp caches previews per URL, so the bot appends `?v=<hash of the list>` to
+the link. The card refreshes whenever the list actually changed, and the URL
+stays put when it didn't. The page ignores the parameter.
+
+Two things this is not:
+
+- **Not an interactive checklist inside the chat.** Meta's Groups API does not
+  support interactive button or list messages, so nothing is tickable from
+  within WhatsApp itself — the card is a picture, and ticking happens on the
+  page it links to.
+- **Not private from Meta.** Generating the preview means Meta fetches and
+  caches the page and the card image, so the list contents pass through their
+  servers. For groceries that's academic, but it is worth knowing.
+
 ### Read this before you start
 
 WhatsApp's Groups API is far more restrictive than it sounds:
@@ -117,6 +141,10 @@ The worker (`worker/baileys.mjs`) does nothing but shuttle messages: group text
 goes to the app's `/api/bot` endpoint, and whatever comes back is posted to the
 group. All the list logic is shared with the Cloud API path — same
 interpretation, same deduplication, same database.
+
+Link previews work here too, but differently: Baileys builds the card itself
+(via the optional `link-preview-js` dependency) rather than having Meta fetch
+it, so the worker container needs to be able to reach `PUBLIC_URL`.
 
 ### Cost
 

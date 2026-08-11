@@ -2,6 +2,10 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  // Chat link previews need absolute URLs for the generated image.
+  metadataBase: process.env.PUBLIC_URL
+    ? new URL(process.env.PUBLIC_URL)
+    : undefined,
   title: "Shopping list",
   description: "A shared shopping list for a group of people.",
 };

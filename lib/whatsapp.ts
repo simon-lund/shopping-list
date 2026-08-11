@@ -106,7 +106,9 @@ export async function sendToGroup(groupId: string, body: string): Promise<void> 
         messaging_product: "whatsapp",
         recipient_type: "group",
         to: groupId,
-        text: { body },
+        // preview_url is what makes WhatsApp render the list link as a card
+        // with the items in it. Without it the link is plain text.
+        text: { body, preview_url: true },
       }),
     },
   );

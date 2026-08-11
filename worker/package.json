@@ -3,9 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node baileys.mjs" },
+  "scripts": {
+    "start": "node baileys.mjs"
+  },
   "dependencies": {
     "@whiskeysockets/baileys": "7.0.0-rc14",
+    "link-preview-js": "^3.2.0",
     "qrcode-terminal": "0.12.0"
   }
 }

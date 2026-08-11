@@ -71,7 +71,14 @@ async function start() {
   }
 
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const sock = makeWASocket({ auth: state, syncFullHistory: false });
+  const sock = makeWASocket({
+    auth: state,
+    syncFullHistory: false,
+    // Renders the list link as a preview card. Baileys builds it client-side
+    // via the optional link-preview-js dependency, so this worker must be able
+    // to reach PUBLIC_URL itself.
+    generateHighQualityLinkPreview: true,
+  });
 
   sock.ev.on("creds.update", saveCreds);
 

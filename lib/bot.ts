@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { getItems, newListId, query } from "@/lib/db";
+import { getItems, newListId, query, type Item } from "@/lib/db";
 import { interpret, type Action } from "@/lib/interpret";
 
 /**
@@ -60,9 +61,18 @@ async function findItem(listId: string, text: string) {
   return rows[0];
 }
 
-function listUrl(listId: string): string {
+/**
+ * WhatsApp caches the link preview per URL, so a plain link would keep showing
+ * the list as it looked the first time it was shared. Tagging the URL with a
+ * hash of the current contents forces a fresh card whenever the list actually
+ * changed — and keeps the same URL when it didn't, so nothing is re-scraped
+ * for no reason. The page ignores the parameter.
+ */
+async function listUrl(listId: string, items: Item[]): Promise<string> {
   const base = process.env.PUBLIC_URL?.replace(/\/$/, "") ?? "";
-  return `${base}/l/${listId}`;
+  const state = items.map((item) => `${item.id}:${item.done}`).join(",");
+  const version = createHash("sha1").update(state).digest("hex").slice(0, 6);
+  return `${base}/l/${listId}?v=${version}`;
 }
 
 async function apply(
@@ -114,8 +124,11 @@ async function apply(
   if (removed.length) lines.push(`Removed ${removed.join(", ")}.`);
   if (cleared) lines.push(`Cleared ${cleared} bought item${cleared === 1 ? "" : "s"}.`);
 
+  // Read once, after every action has been applied: used both for the "show"
+  // reply and for versioning the link.
+  const items = await getItems(listId);
+
   if (show) {
-    const items = await getItems(listId);
     const todo = items.filter((i) => !i.done);
     lines.push(
       todo.length
@@ -125,7 +138,7 @@ async function apply(
   }
 
   if (!lines.length) return null;
-  return `${lines.join("\n")}\n${listUrl(listId)}`;
+  return `${lines.join("\n")}\n${await listUrl(listId, items)}`;
 }
 
 /**
