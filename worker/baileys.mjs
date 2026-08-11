@@ -69,6 +69,9 @@ const PAIR_NUMBER = normalisePairNumber(process.env.BAILEYS_PAIR_NUMBER);
  */
 const TRIGGER = (process.env.BOT_TRIGGER ?? "").trim().toLowerCase();
 
+/** Post a one-off "this is what I do" the first time a group is enabled. */
+const INTRO = process.env.BOT_INTRO !== "false";
+
 /** Longer messages are conversation, not a shopping request. */
 const MAX_CHARS = Number(process.env.BOT_MAX_CHARS ?? 500) || 500;
 
@@ -181,6 +184,22 @@ export function toGroupMessage(
       "Someone",
     text,
   };
+}
+
+/** Asks the app for a group's introduction; null once it has been given. */
+async function fetchIntro(groupId) {
+  try {
+    const response = await fetch(`${APP_URL}/api/bot/intro`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-bot-secret": SECRET },
+      body: JSON.stringify({ groupId, trigger: TRIGGER || null }),
+    });
+    if (!response.ok) return null;
+    return (await response.json()).intro ?? null;
+  } catch (error) {
+    console.error("baileys: could not fetch intro", error.message);
+    return null;
+  }
 }
 
 async function askApp(message) {
@@ -311,6 +330,16 @@ async function start() {
       }
 
       if (!permitted) continue;
+
+      // Said once per group, ever — with a trigger configured nobody else in
+      // the group would otherwise know the bot is here or how to reach it.
+      if (INTRO) {
+        const intro = await fetchIntro(message.groupId);
+        if (intro) {
+          const sent = await sock.sendMessage(message.groupId, { text: intro });
+          rememberSent(sent?.key?.id);
+        }
+      }
 
       try {
         const reply = await askApp(message);

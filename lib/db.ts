@@ -69,6 +69,13 @@ const SCHEMA = `
     updated_at timestamptz not null default now()
   );
 
+  -- Groups the bot has already introduced itself in, so it does so once and
+  -- not again on every restart.
+  create table if not exists group_intros (
+    group_id text primary key,
+    introduced_at timestamptz not null default now()
+  );
+
   -- WhatsApp redelivers webhooks; without this, retries duplicate items.
   create table if not exists seen_messages (
     id text primary key,

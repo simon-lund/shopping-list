@@ -96,6 +96,16 @@ Setting `BOT_TRIGGER` is the strongest privacy control available here: with it,
 the only text that ever reaches Anthropic is what someone deliberately prefixed.
 The cost is that everyone has to remember the prefix.
 
+### Introducing itself
+
+The first time a group is enabled, the bot posts one short message saying what
+it does and — when a trigger is configured — how to reach it, with a link to
+the list. Once per group, ever, recorded in the database so a restart doesn't
+repeat it. `BOT_INTRO=false` keeps it silent until spoken to.
+
+This matters most with a trigger set: nobody else in the group has any way to
+guess that a prefix exists, so without the introduction the bot looks broken.
+
 ### The link preview
 
 The link the bot posts renders as a card showing the list as a checklist, so

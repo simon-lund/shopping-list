@@ -106,6 +106,8 @@ services:
       BOT_TRIGGER: ${BOT_TRIGGER:-}
       # Messages longer than this are skipped (default 500).
       BOT_MAX_CHARS: ${BOT_MAX_CHARS:-}
+      # Set to "false" to stop the bot introducing itself in a new group.
+      BOT_INTRO: ${BOT_INTRO:-}
     volumes:
       - baileys-auth:/data
     depends_on:
