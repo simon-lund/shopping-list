@@ -148,6 +148,55 @@ docker compose exec db pg_dump -U shopping shopping > backup.sql
 To use a Postgres you already run, delete the `db` service from
 `docker-compose.yml` and set `DATABASE_URL` yourself.
 
+### Adding a domain to the Compose stack later
+
+Compose stacks route through Traefik, which can only see containers on
+Dokploy's own network. Attach the `app` service to **both** networks — the
+default one, so it can still reach `db`, and `dokploy-network`, so Traefik can
+reach it:
+
+```yaml
+services:
+  app:
+    networks: [default, dokploy-network]
+
+networks:
+  dokploy-network:
+    external: true
+```
+
+Keeping `default` in that list is the part people miss. Attaching `app` to
+`dokploy-network` alone takes it off the compose network and it can no longer
+resolve `db`, so the site comes up and every page 500s.
+
+Note that this makes the file Dokploy-specific: plain `docker compose up` then
+needs `docker network create dokploy-network` first. That's why it isn't in the
+file already.
+
+## Viewing it without a domain
+
+Two options, no DNS required.
+
+**The published port.** `docker-compose.yml` already maps port 3000 to the
+host, so the app is reachable at `http://SERVER_IP:3000` as soon as the stack
+is up — just open that port in your firewall. Nothing to configure.
+
+**A free generated domain.** On the service's **Domains** tab → **Create
+Domain** → click the 🎲 dice icon next to the Host field. Dokploy generates a
+`{appName}.{ip}.traefik.me` host that resolves to your server's IP. For a
+Compose stack, point it at the `app` service on container port `3000`. These
+are HTTP-only unless you add your own certificate.
+
+Both are plain HTTP, which has one visible effect on this app: browsers only
+expose the clipboard API on HTTPS or localhost, so the **Share this list**
+button can't copy. It falls back to displaying the URL as text for you to copy
+by hand. Adding, ticking, deleting and syncing all work normally over HTTP.
+
+Also worth knowing: a published port stays reachable at `SERVER_IP:3000` even
+after you attach a domain, and this app has no login. If that bothers you,
+drop the `ports:` block from `docker-compose.yml` once Traefik is routing to
+it — Traefik reaches the container over the Docker network, not the host port.
+
 ## Running it locally
 
 ```bash
