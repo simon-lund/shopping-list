@@ -3,11 +3,12 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { addItem, clearDone, deleteItem, toggleItem } from "@/app/actions";
 import { getItems, getList } from "@/lib/db";
+import { listVersion } from "@/lib/version";
 import { LiveList, ShareButton } from "./client";
 
 export const dynamic = "force-dynamic";
 
-/** Drives the chat link preview, alongside opengraph-image.tsx. */
+/** Drives the chat link preview, alongside the card route. */
 export async function generateMetadata({
   params,
 }: {
@@ -17,16 +18,25 @@ export async function generateMetadata({
   const list = await getList(slug);
   if (!list) return { title: "Shopping list" };
 
-  const todo = (await getItems(slug)).filter((item) => !item.done);
+  const items = await getItems(slug);
+  const todo = items.filter((item) => !item.done);
   const preview = todo.slice(0, 6).map((item) => item.text);
   const description = todo.length
     ? `${preview.join(", ")}${todo.length > preview.length ? `, +${todo.length - preview.length} more` : ""}`
     : "Nothing left to buy.";
 
+  // The version makes the image URL change whenever the list does, so chat
+  // clients fetch a fresh card instead of reusing the cached one.
+  const image = {
+    url: `/l/${slug}/card?v=${listVersion(items)}`,
+    width: 1200,
+    height: 630,
+  };
+
   return {
     title: list.name,
     description,
-    openGraph: { title: list.name, description, type: "website" },
+    openGraph: { title: list.name, description, type: "website", images: [image] },
   };
 }
 

@@ -2,23 +2,26 @@ import { ImageResponse } from "next/og";
 import { getItems, getList } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
-export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
 
+const size = { width: 1200, height: 630 };
 const SHOWN = 7;
 
 /**
- * The card WhatsApp shows when the bot posts a list link — the list as a
+ * The card chat clients show when the bot posts a list link — the list as a
  * checklist, readable without opening anything.
+ *
+ * This is a route rather than Next's `opengraph-image` file convention because
+ * that convention builds the image URL from a build-time hash, so the URL never
+ * changes as the list does — and clients cache preview images by URL, which
+ * left the card permanently stale. Here the caller supplies `?v=<version>`.
  *
  * Rendered by Satori, which supports a flexbox subset of CSS: every element
  * with more than one child needs an explicit `display: flex`.
  */
-export default async function Image({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ slug: string }> },
+) {
   const { slug } = await params;
   const list = await getList(slug);
   const items = list ? await getItems(slug) : [];
@@ -81,6 +84,15 @@ export default async function Image({
         </div>
       </div>
     ),
-    size,
+    {
+      ...size,
+      headers: {
+        // A versioned URL addresses one fixed list state, so it can be cached
+        // hard. Without a version it is "whatever the list is now", so don't.
+        "cache-control": new URL(request.url).searchParams.has("v")
+          ? "public, max-age=31536000, immutable"
+          : "public, max-age=60",
+      },
+    },
   );
 }

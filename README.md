@@ -198,6 +198,49 @@ and can't add an item twice.
   id — Meta doesn't document it publicly, so `lib/whatsapp.ts` guesses at
   several field names and may need one more added.
 
+## Security
+
+The threat model is deliberately small: **the link is the credential.** Anyone
+who has a list URL can read and edit that list, and there is nothing else to
+protect. If that isn't true for you, this is the wrong app.
+
+What is actually enforced:
+
+- Webhooks are HMAC-verified (`x-hub-signature-256`) with a timing-safe
+  comparison, and `/api/bot` requires a shared secret the same way. Both **fail
+  closed**: if the secret is unset, every request is rejected.
+- All SQL is parameterized — there is no string interpolation into queries.
+- Both container images run as an unprivileged user.
+- Item text and sender names are rendered through React, which escapes them, so
+  a group member can't inject markup by naming themselves something clever.
+- The bot's model output is constrained to a fixed action schema, so prompt
+  injection in a group message can at worst manipulate *that group's own list* —
+  something any member can already do by typing normally. It cannot reach
+  another group's list or run anything.
+
+Known gaps, in rough order of how much they'd bother me:
+
+- **The published port bypasses your proxy.** `docker-compose.yml` publishes
+  port 3000 on the host, so `http://SERVER_IP:3000` serves the app in the clear,
+  around Cloudflare and around TLS. Drop the `ports:` block once Traefik is
+  routing — Traefik reaches the container over the Docker network.
+- **No rate limiting anywhere.** Nothing throttles list pages, server actions,
+  or card rendering. Card rendering in particular is CPU-heavy, though a
+  versioned card URL is immutable and cacheable, so a proxy absorbs the repeats.
+- **List URLs are ~40 bits** (8 characters of a 33-character alphabet).
+  Unguessable in practice for a household; not a secret worth defending against
+  a determined attacker with no rate limit in front of it.
+- **Link previews mean Meta fetches your list.** Generating the preview card
+  requires their crawler to load the page and image, so contents pass through
+  and are cached on their servers.
+- **The Baileys session is a full WhatsApp account credential.** Anyone who
+  reads the `baileys-auth` volume can impersonate that account. Another reason
+  to pair a spare SIM.
+- **`POSTGRES_PASSWORD` falls back to `shopping`** if unset. The database
+  publishes no ports, so it's only reachable from inside the stack — but set it.
+- **`seen_messages` grows forever.** Housekeeping, not security; delete rows
+  older than a few days if it ever matters.
+
 ## Deploying on Dokploy
 
 Use Dokploy's own Postgres service — it manages the credentials, gives you a
