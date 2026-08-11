@@ -33,6 +33,15 @@ That connection string already contains the user, password, host, port and
 database name, so there are no separate `DB_USER` / `DB_PASSWORD` variables.
 Nothing else is configurable.
 
+`docker-compose.yml` builds that string for you, so when you deploy with
+compose you never set `DATABASE_URL` by hand. It reads two variables of its
+own instead:
+
+| Variable            | Used for                                              |
+| ------------------- | ----------------------------------------------------- |
+| `POSTGRES_PASSWORD` | the password compose gives its Postgres container      |
+| `DOMAIN`            | the hostname Traefik routes, e.g. `list.example.com`   |
+
 > **Watch out:** if your password contains `@`, `/`, `:`, `?` or `#`, it has to
 > be percent-encoded inside the URL or the string won't parse. The easiest fix
 > is to use a password with only letters and digits.
@@ -148,30 +157,45 @@ docker compose exec db pg_dump -U shopping shopping > backup.sql
 To use a Postgres you already run, delete the `db` service from
 `docker-compose.yml` and set `DATABASE_URL` yourself.
 
-### Adding a domain to the Compose stack later
+### Putting the Compose stack on a domain
 
-Compose stacks route through Traefik, which can only see containers on
-Dokploy's own network. Attach the `app` service to **both** networks — the
-default one, so it can still reach `db`, and `dokploy-network`, so Traefik can
-reach it:
+Set `DOMAIN` in the service's environment and redeploy:
 
-```yaml
-services:
-  app:
-    networks: [default, dokploy-network]
-
-networks:
-  dokploy-network:
-    external: true
+```
+DOMAIN=list.example.com
 ```
 
-Keeping `default` in that list is the part people miss. Attaching `app` to
-`dokploy-network` alone takes it off the compose network and it can no longer
-resolve `db`, so the site comes up and every page 500s.
+That's all — `docker-compose.yml` already carries the Traefik labels and the
+`dokploy-network` attachment. **Don't also add the domain in Dokploy's Domains
+tab**; for compose stacks that path is unreliable and produces a Traefik
+`404 page not found` — it has shipped a malformed `Host` rule
+([#3161](https://github.com/Dokploy/dokploy/issues/3161)), skipped generating
+the config entirely ([#4324](https://github.com/Dokploy/dokploy/issues/4324)),
+and left containers off `dokploy-network`
+([#3435](https://github.com/Dokploy/dokploy/issues/3435)). Declaring the labels
+in the compose file avoids all three.
 
-Note that this makes the file Dokploy-specific: plain `docker compose up` then
-needs `docker network create dokploy-network` first. That's why it isn't in the
-file already.
+Two details in that file are load-bearing if you edit it:
+
+- `app` is on **both** `default` and `dokploy-network`. Dropping `default`
+  takes it off the compose network, and it can no longer resolve `db` — the
+  site loads and every page 500s.
+- `traefik.docker.network=dokploy-network` tells Traefik which of the two
+  addresses to route to. Without it, it may pick the wrong one.
+
+Point the DNS record straight at the server. If the domain sits behind a
+**Cloudflare proxy** (orange cloud), Let's Encrypt can't complete its HTTP-01
+challenge, no certificate is issued, and Cloudflare serves a 525/526 error. Set
+the record to **DNS only** first; once the certificate exists you can turn the
+proxy back on with SSL/TLS mode **Full (strict)** — never "Flexible", which
+causes a redirect loop.
+
+Because the network is declared external, plain `docker compose up` outside
+Dokploy needs it to exist first:
+
+```bash
+docker network create dokploy-network
+```
 
 ## Viewing it without a domain
 

@@ -24,6 +24,30 @@ services:
         condition: service_healthy
     ports:
       - "${PORT:-3000}:3000"
+    # `default` is how app reaches db; `dokploy-network` is how Traefik reaches app.
+    # Both are required — dropping `default` breaks the database connection.
+    networks:
+      - default
+      - dokploy-network
+    # Routing is declared here rather than in Dokploy's Domains tab, which has a
+    # history of not generating usable Traefik config for compose stacks.
+    # Set DOMAIN in the environment; without it these routers just never match.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      - "traefik.http.services.shopping.loadbalancer.server.port=3000"
+      - "traefik.http.routers.shopping.rule=Host(`${DOMAIN:-shopping.localhost}`)"
+      - "traefik.http.routers.shopping.entrypoints=websecure"
+      - "traefik.http.routers.shopping.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.shopping-web.rule=Host(`${DOMAIN:-shopping.localhost}`)"
+      - "traefik.http.routers.shopping-web.entrypoints=web"
+      - "traefik.http.routers.shopping-web.middlewares=shopping-to-https"
+      - "traefik.http.middlewares.shopping-to-https.redirectscheme.scheme=https"
 
 volumes:
   db-data:
+
+# Created by Dokploy. Locally: docker network create dokploy-network
+networks:
+  dokploy-network:
+    external: true
