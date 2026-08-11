@@ -21,18 +21,132 @@ a secret: treat it like a shared Google Doc link.
 - Postgres via `pg`, plain SQL, no ORM
 - Two tables, created automatically on first run — there is no migration step
 
+## Configuration
+
+The app reads exactly one environment variable:
+
+| Variable       | Example                                            |
+| -------------- | -------------------------------------------------- |
+| `DATABASE_URL` | `postgres://shopping:secret@db-host:5432/shopping` |
+
+That connection string already contains the user, password, host, port and
+database name, so there are no separate `DB_USER` / `DB_PASSWORD` variables.
+Nothing else is configurable.
+
+> **Watch out:** if your password contains `@`, `/`, `:`, `?` or `#`, it has to
+> be percent-encoded inside the URL or the string won't parse. The easiest fix
+> is to use a password with only letters and digits.
+
 ## Deploying on Dokploy
 
-1. In Dokploy, create a new **Compose** service and point it at this repository.
-2. Set an environment variable `POSTGRES_PASSWORD` to something random.
-3. Deploy. Compose builds the app image and starts Postgres alongside it.
-4. Attach your domain to the `app` service on port `3000`.
+Use Dokploy's own Postgres service — it manages the credentials, gives you a
+volume that survives redeploys, and has backups built into the UI. You create
+two services in one project: a **database** and an **application**.
 
-Postgres data lives in the `db-data` volume, so it survives redeploys. To back
-it up: `docker compose exec db pg_dump -U shopping shopping > backup.sql`.
+### Before you start
 
-If you'd rather use a Postgres you already run, delete the `db` service from
-`docker-compose.yml` and point `DATABASE_URL` at your existing database.
+- Dokploy installed on the server, with ports 80 and 443 open
+- A DNS `A` record for your domain pointing at the server's IP
+
+### 1. Create the project
+
+Dashboard → **Create Project** → name it `shopping-list` → **Create**.
+
+### 2. Create the Postgres database
+
+Inside the project: **Create Service → Database → PostgreSQL**, and fill in:
+
+| Field             | Value             |
+| ----------------- | ----------------- |
+| Name              | `shopping-db`     |
+| Docker Image      | `postgres:17-alpine` |
+| Database Name     | `shopping`        |
+| Database User     | `shopping`        |
+| Database Password | generate a random one — **letters and digits only** (see the warning above) |
+
+Click **Create**, then **Deploy** and wait for it to come up.
+
+Now open the database's **Internal Credentials** and copy the internal host —
+it's the service's app name, something like `shopping-db-a1b2c3`. Don't guess
+it, copy it. That host only resolves inside the project's Docker network, which
+is exactly what you want: the database is never exposed to the internet. Leave
+**External Port** empty.
+
+### 3. Create the application
+
+In the same project: **Create Service → Application** → name it `shopping-app`.
+
+On the **General** tab:
+
+- **Source**: GitHub (or Git) → this repository → branch `main`
+- **Build Type**: **Dockerfile**, path `./Dockerfile`
+
+Build Type matters — pick Dockerfile, not Nixpacks. The Dockerfile in this repo
+builds Next.js in standalone mode, which is what keeps the image small.
+
+### 4. Point the app at the database
+
+On the application's **Environment** tab, add one variable, using the internal
+host from step 2 and the password you chose:
+
+```
+DATABASE_URL=postgres://shopping:YOUR_PASSWORD@shopping-db-a1b2c3:5432/shopping
+```
+
+Save.
+
+### 5. Add your domain
+
+On the application's **Domains** tab → **Add Domain**:
+
+| Field                | Value              |
+| -------------------- | ------------------ |
+| Host                 | `list.example.com` |
+| Container Port       | `3000`             |
+| HTTPS                | on                 |
+| Certificate Provider | Let's Encrypt      |
+
+### 6. Deploy
+
+Hit **Deploy** and watch the **Deployments** tab. On the first request Traefik
+fetches the certificate, and the app creates its two tables automatically —
+there is no migration step to run.
+
+Optionally turn on **Auto Deploy** on the application so pushes to `main` ship
+themselves, and **Backups** on the database.
+
+### If the build fails with `getaddrinfo EAI_AGAIN`
+
+That's the classic Next.js-on-Dokploy error: the app tried to reach the
+database while the image was still building, when the internal hostname doesn't
+resolve yet. **This app doesn't do that** — nothing touches the database at
+build time, and `npm run build` succeeds with `DATABASE_URL` unset entirely. If
+you ever see that error here, it means a new page is querying the database
+during prerendering; add `export const dynamic = "force-dynamic"` to it.
+
+## Deploying with Docker Compose instead
+
+If you'd rather have one self-contained stack — on Dokploy as a **Compose**
+service, or on any box with Docker — `docker-compose.yml` runs the app and
+Postgres together:
+
+```bash
+POSTGRES_PASSWORD=$(openssl rand -hex 16) docker compose up -d --build
+```
+
+Here you own the Postgres container, which is the only reason
+`POSTGRES_PASSWORD` exists: the repo ships no real password, and the compose
+file falls back to `shopping` for local development. The app itself still only
+reads `DATABASE_URL`, which compose assembles for it.
+
+Data lives in the `db-data` volume and survives redeploys. Back it up with:
+
+```bash
+docker compose exec db pg_dump -U shopping shopping > backup.sql
+```
+
+To use a Postgres you already run, delete the `db` service from
+`docker-compose.yml` and set `DATABASE_URL` yourself.
 
 ## Running it locally
 
