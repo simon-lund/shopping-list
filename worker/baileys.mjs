@@ -16,7 +16,6 @@ import {
   makeWASocket,
   useMultiFileAuthState,
 } from "@whiskeysockets/baileys";
-import qrcode from "qrcode-terminal";
 
 const APP_URL = (process.env.APP_URL || "http://app:3000").replace(/\/$/, "");
 const SECRET = process.env.BOT_SHARED_SECRET;
@@ -49,9 +48,8 @@ const announced = new Set();
 
 /**
  * Number to pair with, digits only including country code (no +, spaces or
- * dashes). Set it and the worker prints an 8-character code to link with
- * instead of a QR — the only workable route when the phone you would scan
- * with is the phone being linked, or when the logs are all you can reach.
+ * dashes). The worker prints an 8-character code to link with; there is no QR
+ * path, since scanning one requires a second screen the operator may not have.
  */
 export function normalisePairNumber(raw) {
   const digits = (raw ?? "").replace(/\D/g, "");
@@ -131,6 +129,13 @@ async function start() {
     process.exit(1);
   }
 
+  if (!PAIR_NUMBER) {
+    console.error(
+      "baileys: BAILEYS_PAIR_NUMBER is not set (digits only, with country code)",
+    );
+    process.exit(1);
+  }
+
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   const sock = makeWASocket({
     auth: state,
@@ -144,7 +149,7 @@ async function start() {
   sock.ev.on("creds.update", saveCreds);
 
   // The socket has to settle before WhatsApp will issue a code, hence the wait.
-  if (PAIR_NUMBER && !sock.authState.creds.registered) {
+  if (!sock.authState.creds.registered) {
     setTimeout(async () => {
       try {
         const code = await sock.requestPairingCode(PAIR_NUMBER);
@@ -159,12 +164,7 @@ async function start() {
     }, 4000);
   }
 
-  sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
-    // Suppress the QR when pairing by code, so the logs stay readable.
-    if (qr && !PAIR_NUMBER) {
-      console.log("\nScan this with WhatsApp → Linked devices:\n");
-      qrcode.generate(qr, { small: true });
-    }
+  sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
     if (connection === "open") console.log("baileys: connected");
     if (connection === "close") {
       const status = lastDisconnect?.error?.output?.statusCode;

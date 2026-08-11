@@ -76,7 +76,7 @@ services:
   # Unofficial WhatsApp transport — an alternative to Meta's Cloud API that
   # works in a group you already have. Off unless you ask for it:
   #   docker compose --profile baileys up -d --build
-  # Then read the logs once to scan the pairing QR code.
+  # Then read the logs once for the pairing code.
   baileys:
     container_name: shopping-baileys
     build: ./worker
@@ -91,8 +91,8 @@ services:
       # Comma-separated group JIDs. Empty means the bot acts in no group at
       # all; unlisted groups are logged once so you can copy the JID in.
       ALLOWED_GROUPS: ${ALLOWED_GROUPS:-}
-      # Set to pair with an 8-character code instead of a QR (digits only,
-      # with country code). Only used until the session is established.
+      # Required: the number to link, digits only with country code. The
+      # worker logs an 8-character pairing code for it on first run.
       BAILEYS_PAIR_NUMBER: ${BAILEYS_PAIR_NUMBER:-}
       # Set to "true" when the bot runs on your own number, so your own
       # messages are acted on rather than skipped as the bot's own output.

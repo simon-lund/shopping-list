@@ -145,20 +145,23 @@ banned.** Pair a spare SIM, not your own number. If the account is banned you
 lose the bot, not the list — the list is in your database either way.
 
 ```bash
-BOT_SHARED_SECRET=$(openssl rand -hex 16) \
+BOT_SHARED_SECRET=$(openssl rand -hex 16) BAILEYS_PAIR_NUMBER=4915112345678 \
   docker compose --profile baileys up -d --build
 docker compose logs -f baileys
 ```
 
-Two ways to link the account, both driven from those logs:
+Linking is by pairing code. Set `BAILEYS_PAIR_NUMBER` to the number — digits
+only, country code included, no `+` or spaces — and the logs print an
+8-character code:
 
-- **Pairing code** — set `BAILEYS_PAIR_NUMBER` to the number, digits only with
-  the country code. The logs print an 8-character code; enter it in WhatsApp →
-  Linked devices → Link a device → *Link with phone number instead*. Use this
-  if the phone you are linking is the only device you have, or if the logs are
-  all you can reach.
-- **QR** — leave `BAILEYS_PAIR_NUMBER` unset and the logs render a QR to scan
-  from a second device.
+```
+baileys: pairing code for +4915112345678: ABCD1234
+```
+
+Enter it in WhatsApp → Linked devices → Link a device → *Link with phone number
+instead*. There is no QR option: scanning one needs a second screen, which is
+exactly what you don't have when the phone being linked is also the one reading
+the logs.
 
 The session lives in the `baileys-auth` volume, so you pair once. Then add the
 bot's number to your group and carry on as normal.
