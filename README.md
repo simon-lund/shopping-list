@@ -185,14 +185,28 @@ Two details in that file are load-bearing if you edit it:
 
 ### TLS behind the Cloudflare proxy
 
-The compose file expects a **Cloudflare Origin Certificate**, because behind
-Cloudflare's proxy (orange cloud) Let's Encrypt's HTTP-01 challenge reaches
-Cloudflare rather than your server, so ACME can never issue or *renew*. An
-origin certificate is free, lasts 15 years and never renews.
+Let's Encrypt works behind Cloudflare's proxy, including renewals. The HTTP-01
+challenge [follows redirects up to 10 deep and does not validate certificates
+when it lands on HTTPS](https://letsencrypt.org/docs/challenge-types/), so
+Cloudflare's HTTP→HTTPS redirect doesn't stop it.
 
-Not using the proxy? Then delete the certificate steps, swap the router's
-`tls=true` label back to `tls.certresolver=letsencrypt`, and keep the DNS
-record grey-clouded ("DNS only") so ACME works.
+The one case that deadlocks is the **first** issuance with SSL/TLS mode set to
+**Full (strict)**: Cloudflare refuses to talk to an origin without a valid
+certificate, and the origin can't obtain one until the challenge gets through.
+Break the loop by setting the DNS record to **DNS only** (grey cloud) for the
+first issuance, then turn the proxy back on. Renewals from then on are fine,
+because by then the origin has a valid certificate for Cloudflare to accept.
+
+Whatever you do, don't use SSL mode **Flexible**: Cloudflare would call the
+origin on port 80, the compose file's HTTP router would redirect it back to
+HTTPS, and you'd get `ERR_TOO_MANY_REDIRECTS`.
+
+### Optional: a Cloudflare origin certificate instead
+
+Only worth it if you'd rather not depend on the redirect chain at renewal
+time, or you want to stop worrying about ACME rate limits. It's free, lasts 15
+years and never renews. Trade-off: it's trusted *only* by Cloudflare, so
+reaching the server directly shows a certificate warning.
 
 **1. Create the certificate.** Cloudflare → **SSL/TLS → Origin Server →
 Create Certificate**. Accept the generated private key, list the hostnames
@@ -218,16 +232,14 @@ tls:
 YAML
 ```
 
-**3. Redeploy** the stack, then set Cloudflare **SSL/TLS → Overview** to
+**3. Swap the router label** in `docker-compose.yml` from
+`tls.certresolver=letsencrypt` to plain `tls=true`, so Traefik serves this
+certificate instead of requesting one over ACME. Install the certificate
+*before* redeploying — otherwise Traefik falls back to its self-signed default
+and Cloudflare answers 526.
+
+**4. Redeploy**, then set Cloudflare **SSL/TLS → Overview** to
 **Full (strict)** and enable **Always Use HTTPS**.
-
-Never use **Flexible**: Cloudflare would call the origin on port 80, the
-compose file's HTTP router would redirect it back to HTTPS, and you'd get
-`ERR_TOO_MANY_REDIRECTS`.
-
-Note that a Cloudflare origin certificate is trusted *only by Cloudflare*.
-Reaching the server directly, bypassing the proxy, will show a certificate
-warning. That is expected.
 
 > **The proxy only hides your server if nothing else exposes it.** This stack
 > publishes port 3000 on the host, so `http://SERVER_IP:3000` still reaches the

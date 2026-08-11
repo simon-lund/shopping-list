@@ -38,13 +38,13 @@ services:
       - "traefik.http.services.shopping.loadbalancer.server.port=3000"
       - "traefik.http.routers.shopping.rule=Host(`${DOMAIN:-shopping.localhost}`)"
       - "traefik.http.routers.shopping.entrypoints=websecure"
-      # TLS uses the Cloudflare Origin Certificate loaded from Traefik's dynamic
-      # config (see README). No certresolver: behind Cloudflare's proxy the
-      # Let's Encrypt HTTP-01 challenge cannot complete, so ACME would only
-      # fail, retry, and eventually hit a rate limit.
-      # Not behind a proxy? Swap this line for:
-      #   traefik.http.routers.shopping.tls.certresolver=letsencrypt
-      - "traefik.http.routers.shopping.tls=true"
+      # Let's Encrypt, which also renews fine behind a Cloudflare proxy: the
+      # HTTP-01 challenge follows Cloudflare's redirect to HTTPS and does not
+      # validate the origin certificate on the way. Only the very first
+      # issuance deadlocks under SSL mode Full (strict) — see the README.
+      # Using a Cloudflare origin certificate instead? Swap this line for:
+      #   traefik.http.routers.shopping.tls=true
+      - "traefik.http.routers.shopping.tls.certresolver=letsencrypt"
       - "traefik.http.routers.shopping-web.rule=Host(`${DOMAIN:-shopping.localhost}`)"
       - "traefik.http.routers.shopping-web.entrypoints=web"
       - "traefik.http.routers.shopping-web.middlewares=shopping-to-https"
