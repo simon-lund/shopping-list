@@ -65,6 +65,53 @@ export async function GET(request: Request) {
     };
   }
 
+  // The worker owns the WhatsApp socket, so its own heartbeat is the only
+  // honest answer to "is the bot actually linked".
+  let worker: Record<string, unknown> = { reporting: false };
+  try {
+    const rows = await query<{
+      connected: boolean;
+      detail: Record<string, unknown>;
+      age: string;
+    }>(
+      `select connected, detail, extract(epoch from now() - updated_at)::text as age
+       from worker_status where id = 'baileys'`,
+    );
+    if (rows[0]) {
+      const age = Math.round(Number(rows[0].age));
+      // Heartbeats are every 60s; treat silence as down rather than trusting
+      // the last thing it said before it died.
+      const stale = age > 150;
+      const detail = rows[0].detail as {
+        number?: string;
+        allowedGroups?: string[];
+        seenGroups?: { id: string; name: string | null; allowed: boolean }[];
+      };
+      const seen = detail.seenGroups ?? [];
+
+      worker = {
+        reporting: true,
+        connected: rows[0].connected && !stale,
+        secondsSinceHeartbeat: age,
+        ...(stale ? { note: "no heartbeat — worker stopped or cannot reach the app" } : {}),
+        // Last four digits only: enough to confirm which account is linked,
+        // without putting a phone number behind a single token.
+        number: detail.number ? `…${detail.number.slice(-4)}` : null,
+        groupsSeen: seen.length,
+        groupsAllowed: seen.filter((group) => group.allowed).length,
+        // Group ids and names are private metadata, so they are off by default.
+        // Turn HEALTH_SHOW_GROUPS on while setting the allowlist up, then off.
+        ...(process.env.HEALTH_SHOW_GROUPS === "true"
+          ? { seenGroups: seen }
+          : seen.length
+            ? { hint: "set HEALTH_SHOW_GROUPS=true to list group ids here" }
+            : {}),
+      };
+    }
+  } catch {
+    // Database already reported as down above; nothing to add.
+  }
+
   const bot = {
     // Booleans only — never echo the values back.
     anthropicKey: Boolean(process.env.ANTHROPIC_API_KEY),
@@ -84,6 +131,7 @@ export async function GET(request: Request) {
       uptimeSeconds: Math.round(process.uptime()),
       database,
       bot,
+      worker,
     },
     // 503 so a monitor actually alarms when the database is unreachable.
     { status: database.ok ? 200 : 503, headers: NO_STORE },

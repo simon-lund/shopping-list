@@ -60,6 +60,15 @@ const SCHEMA = `
     created_at timestamptz not null default now()
   );
 
+  -- Latest heartbeat from the Baileys worker, so /api/health can report
+  -- whether it is actually connected rather than merely configured.
+  create table if not exists worker_status (
+    id text primary key,
+    connected boolean not null,
+    detail jsonb not null default '{}'::jsonb,
+    updated_at timestamptz not null default now()
+  );
+
   -- WhatsApp redelivers webhooks; without this, retries duplicate items.
   create table if not exists seen_messages (
     id text primary key,

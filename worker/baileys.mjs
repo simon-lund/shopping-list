@@ -78,6 +78,35 @@ export function reconnectDelayMs(attempt) {
 }
 
 let attempts = 0;
+let connected = false;
+
+/** Groups seen this run, so the health endpoint can list them for the allowlist. */
+const groups = new Map();
+
+/**
+ * Tell the app how the socket is doing. Only the worker knows whether the
+ * account is linked, and container logs are an awkward place to have to look.
+ */
+async function reportStatus() {
+  try {
+    await fetch(`${APP_URL}/api/bot/status`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-bot-secret": SECRET },
+      body: JSON.stringify({
+        connected,
+        detail: {
+          number: PAIR_NUMBER,
+          allowedGroups: ALLOW_LIST,
+          seenGroups: [...groups.values()],
+        },
+      }),
+    });
+  } catch (error) {
+    console.error("baileys: could not report status", error.message);
+  }
+}
+
+setInterval(reportStatus, 60_000).unref?.();
 
 function rememberSent(id) {
   if (!id) return;
@@ -183,11 +212,15 @@ async function start() {
   sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
     if (connection === "open") {
       attempts = 0;
+      connected = true;
       console.log("baileys: connected");
+      reportStatus();
     }
     if (connection === "close") {
       const status = lastDisconnect?.error?.output?.statusCode;
+      connected = false;
       attempts += 1;
+      reportStatus();
       const wait = reconnectDelayMs(attempts);
 
       if (status === DisconnectReason.loggedOut) {
@@ -229,6 +262,12 @@ async function start() {
         } catch {
           // Metadata is a nicety; the JID is the part that matters.
         }
+        groups.set(message.groupId, {
+          id: message.groupId,
+          name: name || null,
+          allowed: permitted,
+        });
+        reportStatus();
         console.log(
           permitted
             ? `baileys: active in ${message.groupId}${name ? ` (${name})` : ""}`

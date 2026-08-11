@@ -42,6 +42,9 @@ services:
       BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-}
       # Enables /api/health. Unset means the endpoint 404s.
       HEALTH_TOKEN: ${HEALTH_TOKEN:-}
+      # Lists group ids and names in /api/health. Private metadata, so off by
+      # default — turn on while setting ALLOWED_GROUPS, then off again.
+      HEALTH_SHOW_GROUPS: ${HEALTH_SHOW_GROUPS:-}
     depends_on:
       db:
         condition: service_healthy

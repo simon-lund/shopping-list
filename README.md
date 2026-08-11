@@ -296,6 +296,28 @@ cost of the token appearing in access logs.
 }
 ```
 
+When the Baileys worker is running it reports in every 60 seconds, so the
+`worker` block answers whether the account is actually linked — something only
+the worker knows:
+
+```json
+"worker": {
+  "reporting": true,
+  "connected": true,
+  "secondsSinceHeartbeat": 12,
+  "number": "…0245",
+  "groupsSeen": 2,
+  "groupsAllowed": 1
+}
+```
+
+Silence for more than 150 seconds is reported as `connected: false` rather than
+repeating whatever it last said. Group ids and names are **not** included by
+default — that is private metadata, and it would otherwise sit behind the same
+single token as everything else. Set `HEALTH_SHOW_GROUPS=true` while you
+populate `ALLOWED_GROUPS`, then turn it off. The phone number is always
+truncated to its last four digits.
+
 It returns **503** with `"status": "degraded"` when the database is
 unreachable, so an uptime monitor alarms instead of seeing a cheerful 200. The
 `bot` block is booleans and the model name only — never the values — so it
