@@ -147,11 +147,25 @@ lose the bot, not the list — the list is in your database either way.
 ```bash
 BOT_SHARED_SECRET=$(openssl rand -hex 16) \
   docker compose --profile baileys up -d --build
-docker compose logs -f baileys   # scan the QR with WhatsApp → Linked devices
+docker compose logs -f baileys
 ```
 
-The session is stored in the `baileys-auth` volume, so you pair once. Then add
-the bot's number to your group and carry on as normal.
+Two ways to link the account, both driven from those logs:
+
+- **Pairing code** — set `BAILEYS_PAIR_NUMBER` to the number, digits only with
+  the country code. The logs print an 8-character code; enter it in WhatsApp →
+  Linked devices → Link a device → *Link with phone number instead*. Use this
+  if the phone you are linking is the only device you have, or if the logs are
+  all you can reach.
+- **QR** — leave `BAILEYS_PAIR_NUMBER` unset and the logs render a QR to scan
+  from a second device.
+
+The session lives in the `baileys-auth` volume, so you pair once. Then add the
+bot's number to your group and carry on as normal.
+
+Because the account is a linked device, **the phone that owns the number has to
+come online every couple of weeks** or WhatsApp drops the link and the bot goes
+quiet until you pair again.
 
 **The bot answers only in groups you list.** Anyone in a group can add your
 number to another one, and without a guard the bot would start replying there

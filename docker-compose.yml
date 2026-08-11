@@ -91,6 +91,9 @@ services:
       # Comma-separated group JIDs. Empty means the bot acts in no group at
       # all; unlisted groups are logged once so you can copy the JID in.
       ALLOWED_GROUPS: ${ALLOWED_GROUPS:-}
+      # Set to pair with an 8-character code instead of a QR (digits only,
+      # with country code). Only used until the session is established.
+      BAILEYS_PAIR_NUMBER: ${BAILEYS_PAIR_NUMBER:-}
     volumes:
       - baileys-auth:/data
     depends_on:

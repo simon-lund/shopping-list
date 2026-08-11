@@ -48,6 +48,19 @@ const ALLOW_LIST = parseAllowList(process.env.ALLOWED_GROUPS);
 const announced = new Set();
 
 /**
+ * Number to pair with, digits only including country code (no +, spaces or
+ * dashes). Set it and the worker prints an 8-character code to link with
+ * instead of a QR — the only workable route when the phone you would scan
+ * with is the phone being linked, or when the logs are all you can reach.
+ */
+export function normalisePairNumber(raw) {
+  const digits = (raw ?? "").replace(/\D/g, "");
+  return digits.length >= 8 ? digits : null;
+}
+
+const PAIR_NUMBER = normalisePairNumber(process.env.BAILEYS_PAIR_NUMBER);
+
+/**
  * Pulls a group text message out of a Baileys message, or returns null if it
  * isn't one we should act on. Exported so it can be tested without a socket.
  */
@@ -107,8 +120,25 @@ async function start() {
 
   sock.ev.on("creds.update", saveCreds);
 
+  // The socket has to settle before WhatsApp will issue a code, hence the wait.
+  if (PAIR_NUMBER && !sock.authState.creds.registered) {
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(PAIR_NUMBER);
+        console.log(
+          `\nbaileys: pairing code for +${PAIR_NUMBER}: ${code}\n` +
+            "Enter it in WhatsApp -> Linked devices -> Link a device ->\n" +
+            "\"Link with phone number instead\". It expires in a few minutes.\n",
+        );
+      } catch (error) {
+        console.error("baileys: could not request a pairing code", error);
+      }
+    }, 4000);
+  }
+
   sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
-    if (qr) {
+    // Suppress the QR when pairing by code, so the logs stay readable.
+    if (qr && !PAIR_NUMBER) {
       console.log("\nScan this with WhatsApp → Linked devices:\n");
       qrcode.generate(qr, { small: true });
     }
