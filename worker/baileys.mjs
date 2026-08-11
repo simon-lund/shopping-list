@@ -59,6 +59,28 @@ export function normalisePairNumber(raw) {
 
 const PAIR_NUMBER = normalisePairNumber(process.env.BAILEYS_PAIR_NUMBER);
 
+/**
+ * Optional prefix a message must start with to be looked at.
+ *
+ * Unset, every text message in an allowed group goes to the model. Set, only
+ * messages beginning with it do — everything else is dropped here, before any
+ * network call, so ordinary conversation never leaves the server and costs
+ * nothing.
+ */
+const TRIGGER = (process.env.BOT_TRIGGER ?? "").trim().toLowerCase();
+
+/** Longer messages are conversation, not a shopping request. */
+const MAX_CHARS = Number(process.env.BOT_MAX_CHARS ?? 500) || 500;
+
+/** Returns the message with the trigger stripped, or null if it doesn't match. */
+export function applyTrigger(text, trigger) {
+  if (!trigger) return text;
+  const trimmed = text.trimStart();
+  if (!trimmed.toLowerCase().startsWith(trigger)) return null;
+  const rest = trimmed.slice(trigger.length).trim();
+  return rest || null;
+}
+
 // Set when the bot runs on your own number, so your own messages count.
 const INCLUDE_OWN = process.env.BAILEYS_INCLUDE_OWN_MESSAGES === "true";
 
@@ -96,6 +118,8 @@ async function reportStatus() {
         connected,
         detail: {
           number: PAIR_NUMBER,
+          trigger: TRIGGER || null,
+          maxChars: MAX_CHARS,
           allowedGroups: ALLOW_LIST,
           seenGroups: [...groups.values()],
         },
@@ -118,7 +142,10 @@ function rememberSent(id) {
  * Pulls a group text message out of a Baileys message, or returns null if it
  * isn't one we should act on. Exported so it can be tested without a socket.
  */
-export function toGroupMessage(raw, { includeOwn = false, sentIds } = {}) {
+export function toGroupMessage(
+  raw,
+  { includeOwn = false, sentIds, trigger = "", maxChars = 500 } = {},
+) {
   const jid = raw?.key?.remoteJid;
   if (!jid || !isJidGroup(jid)) return null; // 1:1 chats are ignored
 
@@ -131,12 +158,15 @@ export function toGroupMessage(raw, { includeOwn = false, sentIds } = {}) {
     if (sentIds?.has(raw.key.id)) return null;
   }
 
-  const text =
-    raw.message?.conversation ??
-    raw.message?.extendedTextMessage?.text ??
-    raw.message?.imageMessage?.caption ??
-    raw.message?.videoMessage?.caption;
-  if (typeof text !== "string" || !text.trim()) return null;
+  // Text only. A photo or video caption is usually chatter about the picture,
+  // and skipping media keeps both cost and what gets sent onward down. Media
+  // itself is never downloaded either way.
+  const raw_text = raw.message?.conversation ?? raw.message?.extendedTextMessage?.text;
+  if (typeof raw_text !== "string" || !raw_text.trim()) return null;
+  if (raw_text.length > maxChars) return null;
+
+  const text = applyTrigger(raw_text, trigger);
+  if (!text) return null;
 
   const id = raw.key.id;
   if (!id) return null;
@@ -247,7 +277,12 @@ async function start() {
     if (type !== "notify") return; // skip history sync replays
 
     for (const raw of messages) {
-      const message = toGroupMessage(raw, { includeOwn: INCLUDE_OWN, sentIds });
+      const message = toGroupMessage(raw, {
+        includeOwn: INCLUDE_OWN,
+        sentIds,
+        trigger: TRIGGER,
+        maxChars: MAX_CHARS,
+      });
       if (!message) continue;
 
       const permitted = isAllowed(message.groupId, ALLOW_LIST);

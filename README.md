@@ -78,6 +78,24 @@ There are no commands and no prefix. Every message is read; the overwhelming
 majority are conversation and the bot stays silent. It only replies when it
 actually changed something.
 
+### Limiting what reaches the model
+
+Reading everything means every message is sent to the Claude API. Three knobs
+narrow that, all applied in the worker so a filtered message never leaves your
+server at all — no API call, no cost, nothing transmitted:
+
+| Variable | Effect |
+| --- | --- |
+| `BOT_TRIGGER` | Only messages starting with this are considered. With `BOT_TRIGGER=+`, `+milk` is a request and everything else is ignored outright. The prefix is stripped before the model sees it. |
+| `BOT_MAX_CHARS` | Skip messages longer than this (default 500). A shopping request is short; a long one is conversation. |
+
+Photos, videos and documents are always ignored, captions included — a caption
+is usually chatter about the picture. Media is never downloaded in any case.
+
+Setting `BOT_TRIGGER` is the strongest privacy control available here: with it,
+the only text that ever reaches Anthropic is what someone deliberately prefixed.
+The cost is that everyone has to remember the prefix.
+
 ### The link preview
 
 The link the bot posts renders as a card showing the list as a checklist, so

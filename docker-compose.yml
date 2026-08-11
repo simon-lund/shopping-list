@@ -100,6 +100,12 @@ services:
       # Set to "true" when the bot runs on your own number, so your own
       # messages are acted on rather than skipped as the bot's own output.
       BAILEYS_INCLUDE_OWN_MESSAGES: ${BAILEYS_INCLUDE_OWN_MESSAGES:-}
+      # Only messages starting with this reach the model. Unset means every
+      # text message does. Filtering happens in the worker, so anything that
+      # does not match never leaves the server.
+      BOT_TRIGGER: ${BOT_TRIGGER:-}
+      # Messages longer than this are skipped (default 500).
+      BOT_MAX_CHARS: ${BOT_MAX_CHARS:-}
     volumes:
       - baileys-auth:/data
     depends_on:
