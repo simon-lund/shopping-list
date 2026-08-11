@@ -18,7 +18,13 @@ services:
     build: .
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://shopping:${POSTGRES_PASSWORD:-shopping}@db:5432/shopping
+      # Discrete variables rather than a URL, so a password containing / # or ?
+      # doesn't have to be percent-encoded. `pg` reads these directly.
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: shopping
+      PGPASSWORD: ${POSTGRES_PASSWORD:-shopping}
+      PGDATABASE: shopping
       # Used in the links the WhatsApp bot posts back into the group.
       PUBLIC_URL: ${PUBLIC_URL:-}
       # Everything below is only needed for the WhatsApp bot (see README).

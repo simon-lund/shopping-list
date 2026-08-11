@@ -7,11 +7,28 @@ const globalForDb = globalThis as unknown as {
   schemaReady?: Promise<void>;
 };
 
+/**
+ * Two ways to point at Postgres:
+ *
+ * - `DATABASE_URL`, convenient for local work and hosted providers that hand
+ *   you a URL. Beware that `/`, `#` and `?` in a password make the URL
+ *   unparseable unless percent-encoded.
+ * - The standard `PGHOST` / `PGUSER` / `PGPASSWORD` / `PGDATABASE` / `PGPORT`
+ *   variables, which `pg` reads on its own. No escaping rules, so any password
+ *   works as typed. This is what docker-compose.yml uses.
+ */
 function getPool(): Pool {
   if (!globalForDb.pool) {
     const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) throw new Error("DATABASE_URL is not set");
-    globalForDb.pool = new Pool({ connectionString, max: 5 });
+    if (connectionString) {
+      globalForDb.pool = new Pool({ connectionString, max: 5 });
+    } else if (process.env.PGHOST || process.env.PGUSER) {
+      globalForDb.pool = new Pool({ max: 5 });
+    } else {
+      throw new Error(
+        "No database configured: set DATABASE_URL, or PGHOST/PGUSER/PGPASSWORD/PGDATABASE",
+      );
+    }
   }
   return globalForDb.pool;
 }

@@ -26,18 +26,21 @@ a secret: treat it like a shared Google Doc link.
 
 ## Configuration
 
-The app reads exactly one environment variable:
+The app needs to be told where Postgres is, either way round:
 
-| Variable       | Example                                            |
-| -------------- | -------------------------------------------------- |
+| Variable | Example |
+| --- | --- |
 | `DATABASE_URL` | `postgres://shopping:secret@db-host:5432/shopping` |
+| or `PGHOST` / `PGPORT` / `PGUSER` / `PGPASSWORD` / `PGDATABASE` | `db`, `5432`, `shopping`, `secret`, `shopping` |
 
-That connection string already contains the user, password, host, port and
-database name, so there are no separate `DB_USER` / `DB_PASSWORD` variables.
-Nothing else is configurable.
+`DATABASE_URL` wins if both are set. **Prefer the discrete variables when you
+don't control the password**: a password containing `/`, `#` or `?` makes the
+URL unparseable (`pg` fails with `Invalid URL` before it ever connects), while
+the `PG*` variables have no escaping rules at all. `docker-compose.yml` uses
+the discrete form for exactly that reason.
 
-`docker-compose.yml` builds that string for you, so when you deploy with
-compose you never set `DATABASE_URL` by hand. It reads two variables of its
+`docker-compose.yml` wires the database up for you, so deploying with compose
+means you never set any of the above by hand. It reads two variables of its
 own instead:
 
 | Variable            | Used for                                              |
@@ -45,9 +48,11 @@ own instead:
 | `POSTGRES_PASSWORD` | the password compose gives its Postgres container      |
 | `DOMAIN`            | the hostname Traefik routes, e.g. `list.example.com`   |
 
-> **Watch out:** if your password contains `@`, `/`, `:`, `?` or `#`, it has to
-> be percent-encoded inside the URL or the string won't parse. The easiest fix
-> is to use a password with only letters and digits.
+> **`POSTGRES_PASSWORD` is only read when Postgres first initialises its data
+> directory.** Changing it later does nothing to the existing database — it
+> only changes what the app sends, which then fails to authenticate. To rotate
+> it on a running stack, `ALTER USER shopping WITH PASSWORD '…'` first, then
+> update the variable and redeploy.
 
 ## The WhatsApp bot
 
@@ -68,8 +73,8 @@ The link the bot posts renders as a card showing the list as a checklist, so
 the group can read it without opening anything. Tapping it opens the real,
 tickable list in WhatsApp's in-app browser.
 
-That card is a generated image (`app/l/[slug]/opengraph-image.tsx`) plus Open
-Graph tags, and messages are sent with `preview_url: true` — without that flag
+That card is a generated image (`app/l/[slug]/card/route.tsx`) plus Open Graph
+tags, and messages are sent with `preview_url: true` — without that flag
 WhatsApp shows the link as plain text and never fetches the card.
 
 WhatsApp caches previews per URL, so the bot appends `?v=<hash of the list>` to
