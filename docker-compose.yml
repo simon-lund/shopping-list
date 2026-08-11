@@ -30,6 +30,8 @@ services:
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
       # Only needed for the baileys worker below.
       BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-}
+      # Enables /api/health. Unset means the endpoint 404s.
+      HEALTH_TOKEN: ${HEALTH_TOKEN:-}
     depends_on:
       db:
         condition: service_healthy

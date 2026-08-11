@@ -198,6 +198,44 @@ and can't add an item twice.
   id — Meta doesn't document it publicly, so `lib/whatsapp.ts` guesses at
   several field names and may need one more added.
 
+## Health check
+
+`GET /api/health` reports whether the app can actually reach its database, so
+you can tell "the app is down" from "the database is down" without opening a
+shell. It is **disabled until you set `HEALTH_TOKEN`** — 404 otherwise, because
+an open endpoint listing which integrations are configured is free
+reconnaissance.
+
+```bash
+curl -H "Authorization: Bearer $HEALTH_TOKEN" https://list.example.com/api/health
+```
+
+Monitors that can't send custom headers can use `?token=...` instead, at the
+cost of the token appearing in access logs.
+
+```json
+{
+  "status": "ok",
+  "uptimeSeconds": 3812,
+  "database": { "ok": true, "latencyMs": 8, "lists": 4, "items": 17 },
+  "bot": {
+    "anthropicKey": true,
+    "model": "claude-haiku-4-5",
+    "publicUrl": true,
+    "whatsappCloud": false,
+    "baileys": true
+  }
+}
+```
+
+It returns **503** with `"status": "degraded"` when the database is
+unreachable, so an uptime monitor alarms instead of seeing a cheerful 200. The
+`bot` block is booleans and the model name only — never the values — so it
+answers "did that environment variable actually land?" without echoing secrets.
+
+Counting rows rather than pinging proves the schema exists too, not just that
+the process is alive.
+
 ## Security
 
 The threat model is deliberately small: **the link is the credential.** Anyone
