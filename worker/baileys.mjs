@@ -60,14 +60,34 @@ export function normalisePairNumber(raw) {
 
 const PAIR_NUMBER = normalisePairNumber(process.env.BAILEYS_PAIR_NUMBER);
 
+// Set when the bot runs on your own number, so your own messages count.
+const INCLUDE_OWN = process.env.BAILEYS_INCLUDE_OWN_MESSAGES === "true";
+
+// Ids of messages this worker sent, so they are never treated as input.
+// Bounded: only recent sends can come back on the stream.
+const sentIds = new Set();
+function rememberSent(id) {
+  if (!id) return;
+  sentIds.add(id);
+  if (sentIds.size > 200) sentIds.delete(sentIds.values().next().value);
+}
+
 /**
  * Pulls a group text message out of a Baileys message, or returns null if it
  * isn't one we should act on. Exported so it can be tested without a socket.
  */
-export function toGroupMessage(raw) {
+export function toGroupMessage(raw, { includeOwn = false, sentIds } = {}) {
   const jid = raw?.key?.remoteJid;
   if (!jid || !isJidGroup(jid)) return null; // 1:1 chats are ignored
-  if (raw.key.fromMe) return null; // don't react to our own replies
+
+  if (raw.key.fromMe) {
+    // When the bot runs on your own number, your messages arrive as fromMe —
+    // ignoring them all would mean the bot answered everyone except you. So
+    // skip only what the bot itself sent, tracked by message id, which is what
+    // actually prevents a reply loop.
+    if (!includeOwn) return null;
+    if (sentIds?.has(raw.key.id)) return null;
+  }
 
   const text =
     raw.message?.conversation ??
@@ -83,7 +103,10 @@ export function toGroupMessage(raw) {
     id,
     groupId: jid,
     // participant is the group member's JID; pushName is their display name.
-    sender: raw.pushName || raw.key.participant?.split("@")[0] || "Someone",
+    sender:
+      raw.pushName ||
+      (raw.key.fromMe ? "You" : raw.key.participant?.split("@")[0]) ||
+      "Someone",
     text,
   };
 }
@@ -158,7 +181,7 @@ async function start() {
     if (type !== "notify") return; // skip history sync replays
 
     for (const raw of messages) {
-      const message = toGroupMessage(raw);
+      const message = toGroupMessage(raw, { includeOwn: INCLUDE_OWN, sentIds });
       if (!message) continue;
 
       const permitted = isAllowed(message.groupId, ALLOW_LIST);
@@ -184,7 +207,10 @@ async function start() {
 
       try {
         const reply = await askApp(message);
-        if (reply) await sock.sendMessage(message.groupId, { text: reply });
+        if (reply) {
+          const sent = await sock.sendMessage(message.groupId, { text: reply });
+          rememberSent(sent?.key?.id);
+        }
       } catch (error) {
         console.error("baileys: failed to handle message", message.id, error);
       }

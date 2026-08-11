@@ -94,6 +94,9 @@ services:
       # Set to pair with an 8-character code instead of a QR (digits only,
       # with country code). Only used until the session is established.
       BAILEYS_PAIR_NUMBER: ${BAILEYS_PAIR_NUMBER:-}
+      # Set to "true" when the bot runs on your own number, so your own
+      # messages are acted on rather than skipped as the bot's own output.
+      BAILEYS_INCLUDE_OWN_MESSAGES: ${BAILEYS_INCLUDE_OWN_MESSAGES:-}
     volumes:
       - baileys-auth:/data
     depends_on:

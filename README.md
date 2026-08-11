@@ -167,6 +167,14 @@ Because the account is a linked device, **the phone that owns the number has to
 come online every couple of weeks** or WhatsApp drops the link and the bot goes
 quiet until you pair again.
 
+**Pairing your own number rather than a spare one?** Set
+`BAILEYS_INCLUDE_OWN_MESSAGES=true`. Your messages reach the worker flagged as
+the account's own, and are skipped by default so the bot can't answer itself;
+without this it would reply to everyone in the family except you. Its own
+replies stay excluded either way, matched by message id rather than by the
+flag. Note the bot's replies will appear in the group under your name, since
+it is your account sending them.
+
 **The bot answers only in groups you list.** Anyone in a group can add your
 number to another one, and without a guard the bot would start replying there
 and sending those messages to the model. So `ALLOWED_GROUPS` is deny-by-default:
