@@ -1,16 +1,8 @@
 "use server";
 
-import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { query } from "@/lib/db";
-
-// No l/I/0/O so codes stay readable when typed by hand.
-const ALPHABET = "abcdefghijkmnopqrstuvwxyz23456789";
-
-function newListId(): string {
-  return Array.from(randomBytes(8), (b) => ALPHABET[b % ALPHABET.length]).join("");
-}
+import { newListId, query } from "@/lib/db";
 
 function refresh(listId: string) {
   revalidatePath(`/l/${listId}`);

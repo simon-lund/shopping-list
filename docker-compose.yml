@@ -19,6 +19,15 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://shopping:${POSTGRES_PASSWORD:-shopping}@db:5432/shopping
+      # Used in the links the WhatsApp bot posts back into the group.
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      # Everything below is only needed for the WhatsApp bot (see README).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-}
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
     depends_on:
       db:
         condition: service_healthy

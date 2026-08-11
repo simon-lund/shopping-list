@@ -155,6 +155,12 @@ ul.items li:first-child {
   color: var(--muted);
 }
 
+.by {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
 .remove {
   padding: 0.85rem 1rem;
   background: none;

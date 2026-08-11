@@ -59,6 +59,7 @@ export default async function ListPage({
                   {item.done ? "✓" : ""}
                 </span>
                 <span className="label">{item.text}</span>
+                {item.added_by && <span className="by">{item.added_by}</span>}
               </button>
               <button
                 className="remove"

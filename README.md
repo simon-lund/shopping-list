@@ -14,12 +14,15 @@ a secret: treat it like a shared Google Doc link.
 - Everyone's screen refreshes every 4 seconds, so the list stays in sync
 - Remembers the lists you've opened (in your browser, via `localStorage`)
 - Works on a phone, and still works with JavaScript disabled
+- Optionally, a WhatsApp bot that keeps the list from ordinary group chat —
+  see [The WhatsApp bot](#the-whatsapp-bot)
 
 ## Stack
 
 - Next.js 16 (App Router, server actions) — no client-side state to manage
 - Postgres via `pg`, plain SQL, no ORM
-- Two tables, created automatically on first run — there is no migration step
+- Tables created automatically on first run — there is no migration step
+- Claude, for the bot only. Nothing in the list itself calls a model.
 
 ## Configuration
 
@@ -45,6 +48,94 @@ own instead:
 > **Watch out:** if your password contains `@`, `/`, `:`, `?` or `#`, it has to
 > be percent-encoded inside the URL or the string won't parse. The easiest fix
 > is to use a password with only letters and digits.
+
+## The WhatsApp bot
+
+Optional. With it running, the list maintains itself from ordinary group chat:
+
+> **Simon:** we need oat milk, sourdough and tomatoes
+> **Bot:** Added oat milk, sourdough, tomatoes. https://list.example.com/l/iiwrgofn
+> **Anna:** got the milk
+> **Bot:** Ticked off oat milk. https://list.example.com/l/iiwrgofn
+
+There are no commands and no prefix. Every message is read; the overwhelming
+majority are conversation and the bot stays silent. It only replies when it
+actually changed something.
+
+### Read this before you start
+
+WhatsApp's Groups API is far more restrictive than it sounds:
+
+- **You cannot add the bot to your existing family group.** An API number can
+  only participate in groups the API itself created. You'll be starting a new
+  group and moving everyone over.
+- **Eight participants per group, including the bot** — so seven people.
+- **You need an Official Business Account**, which means going through Meta's
+  business verification. A personal WhatsApp Business app number will not work.
+- Participants join by invite link; there is no endpoint to add someone.
+
+If those don't work for you, the list itself is perfectly usable without the
+bot — and a Telegram bot has none of these limits, if the group is willing to
+move.
+
+### Setup
+
+1. **Meta app.** Create an app with the WhatsApp product, complete business
+   verification, and get an Official Business Account. Note the
+   **phone number ID**, a **permanent access token**, and the **app secret**.
+2. **Environment.** Set `ANTHROPIC_API_KEY`, `WHATSAPP_TOKEN`,
+   `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `PUBLIC_URL`, and a
+   `WHATSAPP_VERIFY_TOKEN` of your choosing (any random string). Redeploy.
+3. **Webhook.** In the Meta app dashboard, point the webhook at
+   `https://your-domain/api/whatsapp`, enter the same verify token, and
+   subscribe to the **messages** field. Meta calls the URL once to verify.
+4. **Create the group** through the Groups API and send everyone the invite
+   link. The first message the bot sees creates that group's list.
+
+### Cost
+
+Every group message costs one Claude call. The default model is
+**`claude-opus-5`**; it runs at `effort: "low"` with the system prompt marked
+for prompt caching, so a typical message is a few hundred cached input tokens
+and a very short structured reply. For a family group that's small, but it is
+not zero and it scales with how chatty the group is.
+
+Set `CLAUDE_MODEL=claude-haiku-4-5` for roughly a fifth of the cost. Haiku
+handles the clear cases fine; Opus is better at *not* reacting to messages that
+merely sound like shopping ("that curry needs more coriander"). Start on the
+default, look at what it does in your group, and step down if you want to.
+
+### What it sends to the model
+
+**Every message in the group is sent to the Claude API**, one at a time, with
+the sender's display name. That is what "no prefix" costs — the bot cannot know
+which messages are about groceries without reading them. Messages are not
+stored beyond the list items they produce, and nothing is used for training,
+but everyone in the group should know this is on.
+
+### How it works
+
+`app/api/whatsapp/route.ts` verifies Meta's `x-hub-signature-256` HMAC and
+rejects anything unsigned, then acknowledges immediately and processes the
+message in `after()` — Meta redelivers webhooks that take too long to answer.
+`lib/interpret.ts` asks Claude for a list of actions using structured outputs,
+so the reply is schema-valid JSON rather than prose to parse. `lib/bot.ts`
+applies them and writes the confirmation back into the group.
+
+Redelivered webhooks are deduplicated on WhatsApp's message id in the
+`seen_messages` table, before the model is called — so a retry costs nothing
+and can't add an item twice.
+
+### If the bot is silent
+
+- Check the app logs. Every failure path logs; the bot deliberately never
+  throws, because a 500 makes Meta retry.
+- `401` on the webhook means the signature check failed — usually
+  `WHATSAPP_APP_SECRET` is wrong or unset.
+- Messages with no group id are skipped by design. If group messages are being
+  skipped, log the raw webhook body and check which field carries the group
+  id — Meta doesn't document it publicly, so `lib/whatsapp.ts` guesses at
+  several field names and may need one more added.
 
 ## Deploying on Dokploy
 
