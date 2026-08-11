@@ -79,14 +79,20 @@ export async function POST(request: Request) {
       ? `I only read messages starting with "${trigger}".\n` +
         "Everything else here is ignored and never sent anywhere.\n" +
         "\n" +
-        `  ${trigger} we need milk and bread\n` +
+        `  ${trigger} apples, milk, 6x eggs\n` +
         `  ${trigger} got the milk\n` +
-        `  ${trigger} what do we still need?`
+        `  ${trigger} actually didn't get the milk\n` +
+        `  ${trigger} forget the apples\n` +
+        `  ${trigger} what do we still need?\n` +
+        `  ${trigger} clear the bought stuff`
       : "Just say what you need and I'll keep up:\n" +
         "\n" +
-        "  we need milk and bread\n" +
+        "  apples, milk, 6x eggs\n" +
         "  got the milk\n" +
+        "  actually didn't get the milk\n" +
+        "  forget the apples\n" +
         "  what do we still need?\n" +
+        "  clear the bought stuff\n" +
         "\n" +
         "To spot those, every message here is read by an AI.\n" +
         "I only reply when I've actually changed something.",

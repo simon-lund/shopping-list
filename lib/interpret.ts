@@ -3,9 +3,11 @@ import Anthropic from "@anthropic-ai/sdk";
 export type Action =
   | { kind: "add"; item: string }
   | { kind: "done"; item: string }
+  | { kind: "undone"; item: string }
   | { kind: "remove"; item: string }
   | { kind: "show"; item: string }
-  | { kind: "clear_done"; item: string };
+  | { kind: "clear_done"; item: string }
+  | { kind: "clear_all"; item: string };
 
 const globalForAnthropic = globalThis as unknown as { anthropic?: Anthropic };
 
@@ -45,15 +47,23 @@ Actions:
 - add: someone wants something on the list. "we need milk" -> add milk.
   Split multiple items into one add each: "milk, eggs and bread" is three adds.
 - done: someone bought or has an item already. "got the milk" -> done milk.
+- undone: someone takes that back — they had not actually got it after all.
+  "sorry, didn't get the milk" -> undone milk.
 - remove: someone wants an item off the list without having bought it.
   "actually forget the bread" -> remove bread.
 - show: someone asks what is on the list. "what do we still need?" -> show.
 - clear_done: someone wants the bought items cleared off.
+- clear_all: someone wants the whole list emptied, bought or not. Only for an
+  unmistakable request like "clear the whole list" or "start the list over" —
+  when in doubt prefer clear_done, which is not destructive.
 
 Guidelines:
 - Write items as short, plain shopping-list entries: "oat milk", not
   "we should probably get some oat milk". Lowercase unless it is a brand name.
-- Drop quantities into the item text only if someone said one: "2l milk".
+- Drop quantities into the item text only if someone said one: "2l milk",
+  "6x eggs".
+- To change an item, remove the old one and add the new: "make the milk 2
+  litres" -> remove milk, add "2l milk".
 - A question about whether something is on the list is a show, not an add.
 - Someone mentioning food they ate or cooked is not a shopping request.
 - Jokes, plans, and links are not shopping requests. When in doubt, do nothing.
@@ -70,12 +80,20 @@ const SCHEMA = {
         properties: {
           kind: {
             type: "string",
-            enum: ["add", "done", "remove", "show", "clear_done"],
+            enum: [
+              "add",
+              "done",
+              "undone",
+              "remove",
+              "show",
+              "clear_done",
+              "clear_all",
+            ],
           },
           item: {
             type: "string",
             description:
-              "The shopping list item. Empty string for show and clear_done.",
+              "The shopping list item. Empty string for show, clear_done and clear_all.",
           },
         },
         required: ["kind", "item"],

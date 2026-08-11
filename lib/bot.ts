@@ -79,9 +79,11 @@ async function apply(
 ): Promise<string | null> {
   const added: string[] = [];
   const ticked: string[] = [];
+  const unticked: string[] = [];
   const removed: string[] = [];
   let show = false;
   let cleared = 0;
+  let clearedAll = 0;
 
   for (const action of actions) {
     const item = action.item?.trim();
@@ -98,6 +100,12 @@ async function apply(
         await query("update items set done = true where id = $1", [match.id]);
         ticked.push(match.text);
       }
+    } else if (action.kind === "undone" && item) {
+      const match = await findItem(listId, item);
+      if (match) {
+        await query("update items set done = false where id = $1", [match.id]);
+        unticked.push(match.text);
+      }
     } else if (action.kind === "remove" && item) {
       const match = await findItem(listId, item);
       if (match) {
@@ -110,6 +118,12 @@ async function apply(
         [listId],
       );
       cleared = gone.length;
+    } else if (action.kind === "clear_all") {
+      const gone = await query<{ id: string }>(
+        "delete from items where list_id = $1 returning id",
+        [listId],
+      );
+      clearedAll = gone.length;
     } else if (action.kind === "show") {
       show = true;
     }
@@ -118,8 +132,11 @@ async function apply(
   const lines: string[] = [];
   if (added.length) lines.push(`Added ${added.join(", ")}.`);
   if (ticked.length) lines.push(`Ticked off ${ticked.join(", ")}.`);
+  if (unticked.length) lines.push(`Put ${unticked.join(", ")} back on the list.`);
   if (removed.length) lines.push(`Removed ${removed.join(", ")}.`);
   if (cleared) lines.push(`Cleared ${cleared} bought item${cleared === 1 ? "" : "s"}.`);
+  if (clearedAll)
+    lines.push(`Emptied the list — ${clearedAll} item${clearedAll === 1 ? "" : "s"} gone.`);
 
   // Read once, after every action has been applied: used both for the "show"
   // reply and for versioning the link.

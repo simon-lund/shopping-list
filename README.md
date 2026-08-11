@@ -78,6 +78,21 @@ There are no commands and no prefix. Every message is read; the overwhelming
 majority are conversation and the bot stays silent. It only replies when it
 actually changed something.
 
+What it understands:
+
+| Said in the group | Effect |
+| --- | --- |
+| "apples, milk, 6x eggs" | adds three items, quantity kept as written |
+| "got the milk" | ticks it off |
+| "actually didn't get the milk" | puts it back |
+| "forget the apples" | removes it without ticking |
+| "make the milk 2 litres" | removes `milk`, adds `2l milk` |
+| "what do we still need?" | posts the outstanding items |
+| "clear the bought stuff" | deletes the ticked ones |
+| "clear the whole list" | empties it |
+
+Matching is loose, so "got the milk" ticks off "oat milk".
+
 ### Limiting what reaches the model
 
 Reading everything means every message is sent to the Claude API. Three knobs
