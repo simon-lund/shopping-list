@@ -49,10 +49,21 @@ own instead:
 | `DOMAIN`            | the hostname Traefik routes, e.g. `list.example.com`   |
 
 > **`POSTGRES_PASSWORD` is only read when Postgres first initialises its data
-> directory.** Changing it later does nothing to the existing database — it
-> only changes what the app sends, which then fails to authenticate. To rotate
-> it on a running stack, `ALTER USER shopping WITH PASSWORD '…'` first, then
-> update the variable and redeploy.
+> directory.** Changing it later does nothing to the existing database — the
+> password lives in the `shopping-db-data` volume, not in the container, so
+> deleting and recreating the container changes nothing. Rotate it with:
+>
+> ```bash
+> docker exec shopping-db psql -U shopping -d shopping \
+>   -c "ALTER USER shopping WITH PASSWORD 'new-password';"
+> ```
+>
+> then set `POSTGRES_PASSWORD` to the same value. To start over instead, delete
+> the volume: `docker rm -f shopping-db && docker volume rm shopping-db-data`.
+
+Containers and volumes have fixed names — `shopping-app`, `shopping-db`,
+`shopping-db-data` — rather than the project-and-hash names compose generates,
+so the commands above work as written.
 
 ## The WhatsApp bot
 

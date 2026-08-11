@@ -1,5 +1,8 @@
 services:
   db:
+    # Pinned so ops commands are copy-pasteable instead of depending on the
+    # project-and-hash name compose would otherwise generate.
+    container_name: shopping-db
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
@@ -15,6 +18,7 @@ services:
       retries: 10
 
   app:
+    container_name: shopping-app
     build: .
     restart: unless-stopped
     environment:
@@ -74,6 +78,7 @@ services:
   #   docker compose --profile baileys up -d --build
   # Then read the logs once to scan the pairing QR code.
   baileys:
+    container_name: shopping-baileys
     build: ./worker
     profiles: [baileys]
     restart: unless-stopped
@@ -89,8 +94,11 @@ services:
       - app
 
 volumes:
+  # Named explicitly for the same reason as the containers.
   db-data:
+    name: shopping-db-data
   baileys-auth:
+    name: shopping-baileys-auth
 
 # Created by Dokploy. Locally: docker network create dokploy-network
 networks:
