@@ -183,12 +183,57 @@ Two details in that file are load-bearing if you edit it:
 - `traefik.docker.network=dokploy-network` tells Traefik which of the two
   addresses to route to. Without it, it may pick the wrong one.
 
-Point the DNS record straight at the server. If the domain sits behind a
-**Cloudflare proxy** (orange cloud), Let's Encrypt can't complete its HTTP-01
-challenge, no certificate is issued, and Cloudflare serves a 525/526 error. Set
-the record to **DNS only** first; once the certificate exists you can turn the
-proxy back on with SSL/TLS mode **Full (strict)** — never "Flexible", which
-causes a redirect loop.
+### TLS behind the Cloudflare proxy
+
+The compose file expects a **Cloudflare Origin Certificate**, because behind
+Cloudflare's proxy (orange cloud) Let's Encrypt's HTTP-01 challenge reaches
+Cloudflare rather than your server, so ACME can never issue or *renew*. An
+origin certificate is free, lasts 15 years and never renews.
+
+Not using the proxy? Then delete the certificate steps, swap the router's
+`tls=true` label back to `tls.certresolver=letsencrypt`, and keep the DNS
+record grey-clouded ("DNS only") so ACME works.
+
+**1. Create the certificate.** Cloudflare → **SSL/TLS → Origin Server →
+Create Certificate**. Accept the generated private key, list the hostnames
+`example.com` and `*.example.com`, choose 15 years. Copy both PEM blocks — the
+key is shown only once.
+
+**2. Install it on the server.** Traefik watches
+`/etc/dokploy/traefik/dynamic` and hot-reloads it, and that directory is
+mounted at the same path inside the container, so no restart and no
+`traefik.yml` edits are needed:
+
+```bash
+sudo mkdir -p /etc/dokploy/traefik/dynamic/certs
+sudo nano /etc/dokploy/traefik/dynamic/certs/origin.crt   # paste the certificate
+sudo nano /etc/dokploy/traefik/dynamic/certs/origin.key   # paste the private key
+sudo chmod 600 /etc/dokploy/traefik/dynamic/certs/origin.key
+
+sudo tee /etc/dokploy/traefik/dynamic/origin-cert.yml >/dev/null <<'YAML'
+tls:
+  certificates:
+    - certFile: /etc/dokploy/traefik/dynamic/certs/origin.crt
+      keyFile: /etc/dokploy/traefik/dynamic/certs/origin.key
+YAML
+```
+
+**3. Redeploy** the stack, then set Cloudflare **SSL/TLS → Overview** to
+**Full (strict)** and enable **Always Use HTTPS**.
+
+Never use **Flexible**: Cloudflare would call the origin on port 80, the
+compose file's HTTP router would redirect it back to HTTPS, and you'd get
+`ERR_TOO_MANY_REDIRECTS`.
+
+Note that a Cloudflare origin certificate is trusted *only by Cloudflare*.
+Reaching the server directly, bypassing the proxy, will show a certificate
+warning. That is expected.
+
+> **The proxy only hides your server if nothing else exposes it.** This stack
+> publishes port 3000 on the host, so `http://SERVER_IP:3000` still reaches the
+> app in the clear, around Cloudflare. Once the domain works, drop the `ports:`
+> block from `docker-compose.yml` — Traefik reaches the container over the
+> Docker network and doesn't need it.
 
 Because the network is declared external, plain `docker compose up` outside
 Dokploy needs it to exist first:
