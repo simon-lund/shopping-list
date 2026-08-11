@@ -74,9 +74,9 @@ WhatsApp's Groups API is far more restrictive than it sounds:
   business verification. A personal WhatsApp Business app number will not work.
 - Participants join by invite link; there is no endpoint to add someone.
 
-If those don't work for you, the list itself is perfectly usable without the
-bot — and a Telegram bot has none of these limits, if the group is willing to
-move.
+If those don't work for you, there is a second transport that runs in a group
+you already have — see [Using your existing group](#using-your-existing-group-unofficial)
+below. The list itself is also perfectly usable without any bot.
 
 ### Setup
 
@@ -92,18 +92,43 @@ move.
 4. **Create the group** through the Groups API and send everyone the invite
    link. The first message the bot sees creates that group's list.
 
+### Using your existing group (unofficial)
+
+Meta's API can't join a group you already have. [Baileys](https://github.com/WhiskeySockets/Baileys)
+can: it's an open-source (MIT) reimplementation of the WhatsApp Web protocol,
+so the bot signs in as an ordinary WhatsApp account and you add it to the
+family group from your phone like any other person. No Official Business
+Account, no eight-person cap, nobody has to move.
+
+**The catch: this is against WhatsApp's terms of service and numbers do get
+banned.** Pair a spare SIM, not your own number. If the account is banned you
+lose the bot, not the list — the list is in your database either way.
+
+```bash
+BOT_SHARED_SECRET=$(openssl rand -hex 16) \
+  docker compose --profile baileys up -d --build
+docker compose logs -f baileys   # scan the QR with WhatsApp → Linked devices
+```
+
+The session is stored in the `baileys-auth` volume, so you pair once. Then add
+the bot's number to your group and carry on as normal.
+
+The worker (`worker/baileys.mjs`) does nothing but shuttle messages: group text
+goes to the app's `/api/bot` endpoint, and whatever comes back is posted to the
+group. All the list logic is shared with the Cloud API path — same
+interpretation, same deduplication, same database.
+
 ### Cost
 
-Every group message costs one Claude call. The default model is
-**`claude-opus-5`**; it runs at `effort: "low"` with the system prompt marked
-for prompt caching, so a typical message is a few hundred cached input tokens
-and a very short structured reply. For a family group that's small, but it is
-not zero and it scales with how chatty the group is.
+Every group message costs one Claude call. The default is
+**`claude-haiku-4-5`**: this is a short classification on every message, which
+is what Haiku is built for, and it keeps a chatty group cheap.
 
-Set `CLAUDE_MODEL=claude-haiku-4-5` for roughly a fifth of the cost. Haiku
-handles the clear cases fine; Opus is better at *not* reacting to messages that
-merely sound like shopping ("that curry needs more coriander"). Start on the
-default, look at what it does in your group, and step down if you want to.
+Set `CLAUDE_MODEL=claude-opus-5` if you want better judgement on messages that
+only *sound* like shopping ("that curry needs more coriander") — roughly five
+times the cost, and it additionally runs with adaptive thinking at low effort
+and a cached system prompt. Those two settings are sent only to models that
+accept them; Haiku 4.5 rejects both, so the code omits them for it.
 
 ### What it sends to the model
 
@@ -115,12 +140,20 @@ but everyone in the group should know this is on.
 
 ### How it works
 
-`app/api/whatsapp/route.ts` verifies Meta's `x-hub-signature-256` HMAC and
-rejects anything unsigned, then acknowledges immediately and processes the
-message in `after()` — Meta redelivers webhooks that take too long to answer.
-`lib/interpret.ts` asks Claude for a list of actions using structured outputs,
-so the reply is schema-valid JSON rather than prose to parse. `lib/bot.ts`
-applies them and writes the confirmation back into the group.
+`lib/bot.ts` is the whole bot: given `{id, groupId, sender, text}` it returns
+the reply to post, or null. It knows nothing about WhatsApp, which is why both
+transports share it. `lib/interpret.ts` asks Claude for a list of actions using
+structured outputs, so the reply is schema-valid JSON rather than prose to
+parse.
+
+The two transports are thin:
+
+- `app/api/whatsapp/route.ts` (Cloud API) verifies Meta's
+  `x-hub-signature-256` HMAC and rejects anything unsigned, then acknowledges
+  immediately and does the work in `after()` — Meta redelivers webhooks that
+  take too long to answer.
+- `worker/baileys.mjs` (unofficial) holds the socket and calls `/api/bot`,
+  which is guarded by `BOT_SHARED_SECRET`.
 
 Redelivered webhooks are deduplicated on WhatsApp's message id in the
 `seen_messages` table, before the model is called — so a retry costs nothing

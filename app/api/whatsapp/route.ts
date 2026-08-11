@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { handleMessage } from "@/lib/bot";
-import { extractGroupMessages, verifySignature } from "@/lib/whatsapp";
+import { extractGroupMessages, sendToGroup, verifySignature } from "@/lib/whatsapp";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +37,10 @@ export async function POST(request: Request) {
   // Interpreting a message takes a second or two; Meta redelivers if we take
   // too long to answer. Acknowledge now, do the work after the response.
   for (const message of extractGroupMessages(body)) {
-    after(() => handleMessage(message));
+    after(async () => {
+      const reply = await handleMessage(message);
+      if (reply) await sendToGroup(message.groupId, reply);
+    });
   }
 
   return new Response("ok", { status: 200 });

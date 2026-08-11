@@ -28,6 +28,8 @@ services:
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      # Only needed for the baileys worker below.
+      BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-}
     depends_on:
       db:
         condition: service_healthy
@@ -59,8 +61,28 @@ services:
       - "traefik.http.routers.shopping-web.middlewares=shopping-to-https"
       - "traefik.http.middlewares.shopping-to-https.redirectscheme.scheme=https"
 
+  # Unofficial WhatsApp transport — an alternative to Meta's Cloud API that
+  # works in a group you already have. Off unless you ask for it:
+  #   docker compose --profile baileys up -d --build
+  # Then read the logs once to scan the pairing QR code.
+  baileys:
+    build: ./worker
+    profiles: [baileys]
+    restart: unless-stopped
+    environment:
+      APP_URL: http://app:3000
+      # Not marked required: compose interpolates this even when the profile is
+      # inactive, which would break a plain `docker compose up`. The worker
+      # exits with a clear message if it is unset.
+      BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-}
+    volumes:
+      - baileys-auth:/data
+    depends_on:
+      - app
+
 volumes:
   db-data:
+  baileys-auth:
 
 # Created by Dokploy. Locally: docker network create dokploy-network
 networks:

@@ -4,12 +4,7 @@ const API_VERSION = process.env.WHATSAPP_API_VERSION || "v23.0";
 // Overridable so tests (and proxies) can point somewhere other than Meta.
 const API_BASE = process.env.WHATSAPP_API_BASE || "https://graph.facebook.com";
 
-export type GroupMessage = {
-  id: string;
-  groupId: string;
-  sender: string;
-  text: string;
-};
+import type { GroupMessage } from "@/lib/bot";
 
 /**
  * Meta signs every webhook with the app secret. Without this check anyone who

@@ -16,9 +16,24 @@ function getClient(): Anthropic {
   return globalForAnthropic.anthropic;
 }
 
-// Claude Opus 5 by default. Set CLAUDE_MODEL=claude-haiku-4-5 to trade some
-// accuracy for roughly a fifth of the cost — see the README.
-const MODEL = process.env.CLAUDE_MODEL || "claude-opus-5";
+// Haiku 4.5 by default: this is a short classification on every group message,
+// which is what it's built for. Set CLAUDE_MODEL=claude-opus-5 for better
+// judgement on messages that only sound like shopping — see the README.
+const MODEL = process.env.CLAUDE_MODEL || "claude-haiku-4-5";
+
+// Adaptive thinking and the effort parameter are rejected by Haiku 4.5, so
+// they're only sent to models that accept them.
+const ADAPTIVE_THINKING_MODELS = new Set([
+  "claude-fable-5",
+  "claude-mythos-5",
+  "claude-opus-5",
+  "claude-opus-4-8",
+  "claude-opus-4-7",
+  "claude-opus-4-6",
+  "claude-sonnet-5",
+  "claude-sonnet-4-6",
+]);
+const useAdaptiveThinking = ADAPTIVE_THINKING_MODELS.has(MODEL);
 
 const SYSTEM = `You watch a family's WhatsApp group chat and maintain their shopping list.
 
@@ -72,6 +87,8 @@ const SCHEMA = {
   additionalProperties: false,
 } as const;
 
+const FORMAT = { type: "json_schema" as const, schema: SCHEMA };
+
 /**
  * Decides what a single group message means for the list. Returns an empty
  * array for the overwhelming majority of messages, which are just chat.
@@ -79,15 +96,14 @@ const SCHEMA = {
 export async function interpret(message: string, sender: string): Promise<Action[]> {
   const response = await getClient().messages.create({
     model: MODEL,
-    max_tokens: 4096,
-    // Adaptive thinking at low effort: enough reasoning to tell chat from a
-    // shopping request, without paying for deliberation on "haha same".
-    thinking: { type: "adaptive" },
-    output_config: {
-      effort: "low",
-      format: { type: "json_schema", schema: SCHEMA },
-    },
+    max_tokens: 2048,
+    // On a thinking model, keep it shallow — this is triage, not deliberation.
+    ...(useAdaptiveThinking
+      ? { thinking: { type: "adaptive" as const }, output_config: { effort: "low" as const, format: FORMAT } }
+      : { output_config: { format: FORMAT } }),
     system: [
+      // Only takes effect on models whose minimum cacheable prefix is small
+      // enough (512 tokens on Opus 5). On Haiku 4.5 it is a silent no-op.
       { type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } },
     ],
     messages: [{ role: "user", content: `${sender} says: ${message}` }],

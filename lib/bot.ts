@@ -1,7 +1,17 @@
 import { revalidatePath } from "next/cache";
 import { getItems, newListId, query } from "@/lib/db";
 import { interpret, type Action } from "@/lib/interpret";
-import { sendToGroup, type GroupMessage } from "@/lib/whatsapp";
+
+/**
+ * A message from any chat transport. Nothing below this line knows or cares
+ * whether it arrived via Meta's Cloud API or a Baileys socket.
+ */
+export type GroupMessage = {
+  id: string;
+  groupId: string;
+  sender: string;
+  text: string;
+};
 
 /** Returns false if this message was already handled (WhatsApp retries). */
 async function claimMessage(id: string): Promise<boolean> {
@@ -118,21 +128,27 @@ async function apply(
   return `${lines.join("\n")}\n${listUrl(listId)}`;
 }
 
-/** Handles one group message end to end. Never throws — the webhook must not retry. */
-export async function handleMessage(message: GroupMessage): Promise<void> {
+/**
+ * Interprets one group message and updates the list.
+ *
+ * Returns the text to post back into the group, or null when there is nothing
+ * to say — which is most messages. Sending is the caller's job, so the same
+ * logic serves both transports. Never throws: a failure here must not make a
+ * webhook retry.
+ */
+export async function handleMessage(message: GroupMessage): Promise<string | null> {
   try {
-    if (!(await claimMessage(message.id))) return;
+    if (!(await claimMessage(message.id))) return null;
 
     const actions = await interpret(message.text, message.sender);
-    if (!actions.length) return;
+    if (!actions.length) return null;
 
     const listId = await listForChat(message.groupId);
     const reply = await apply(listId, actions, message.sender);
-    if (!reply) return;
-
-    revalidatePath(`/l/${listId}`);
-    await sendToGroup(message.groupId, reply);
+    if (reply) revalidatePath(`/l/${listId}`);
+    return reply;
   } catch (error) {
     console.error("bot: failed to handle message", message.id, error);
+    return null;
   }
 }

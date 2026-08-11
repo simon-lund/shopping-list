@@ -1,0 +1,118 @@
+/**
+ * Unofficial WhatsApp transport.
+ *
+ * Runs a real WhatsApp account through Baileys, so the bot can sit in a group
+ * you already have — no Official Business Account, no 8-person cap, no
+ * migrating anyone. The trade is that this is against WhatsApp's terms and the
+ * number can be banned, so pair a spare SIM, not your own.
+ *
+ * All it does is shuttle messages: group text goes to the app's /api/bot
+ * endpoint, and whatever comes back gets posted to the group. The list logic
+ * lives in the app.
+ */
+import {
+  DisconnectReason,
+  isJidGroup,
+  makeWASocket,
+  useMultiFileAuthState,
+} from "@whiskeysockets/baileys";
+import qrcode from "qrcode-terminal";
+
+const APP_URL = (process.env.APP_URL || "http://app:3000").replace(/\/$/, "");
+const SECRET = process.env.BOT_SHARED_SECRET;
+const AUTH_DIR = process.env.BAILEYS_AUTH_DIR || "/data/auth";
+
+/**
+ * Pulls a group text message out of a Baileys message, or returns null if it
+ * isn't one we should act on. Exported so it can be tested without a socket.
+ */
+export function toGroupMessage(raw) {
+  const jid = raw?.key?.remoteJid;
+  if (!jid || !isJidGroup(jid)) return null; // 1:1 chats are ignored
+  if (raw.key.fromMe) return null; // don't react to our own replies
+
+  const text =
+    raw.message?.conversation ??
+    raw.message?.extendedTextMessage?.text ??
+    raw.message?.imageMessage?.caption ??
+    raw.message?.videoMessage?.caption;
+  if (typeof text !== "string" || !text.trim()) return null;
+
+  const id = raw.key.id;
+  if (!id) return null;
+
+  return {
+    id,
+    groupId: jid,
+    // participant is the group member's JID; pushName is their display name.
+    sender: raw.pushName || raw.key.participant?.split("@")[0] || "Someone",
+    text,
+  };
+}
+
+async function askApp(message) {
+  const response = await fetch(`${APP_URL}/api/bot`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-bot-secret": SECRET },
+    body: JSON.stringify(message),
+  });
+  if (!response.ok) {
+    console.error(`baileys: /api/bot returned ${response.status}`);
+    return null;
+  }
+  const { reply } = await response.json();
+  return reply ?? null;
+}
+
+async function start() {
+  if (!SECRET) {
+    console.error("baileys: BOT_SHARED_SECRET is not set");
+    process.exit(1);
+  }
+
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  const sock = makeWASocket({ auth: state, syncFullHistory: false });
+
+  sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
+    if (qr) {
+      console.log("\nScan this with WhatsApp → Linked devices:\n");
+      qrcode.generate(qr, { small: true });
+    }
+    if (connection === "open") console.log("baileys: connected");
+    if (connection === "close") {
+      const status = lastDisconnect?.error?.output?.statusCode;
+      if (status === DisconnectReason.loggedOut) {
+        console.error("baileys: logged out — delete the auth dir and re-pair");
+        process.exit(1);
+      }
+      console.warn(`baileys: disconnected (${status}), reconnecting`);
+      setTimeout(start, 3000);
+    }
+  });
+
+  sock.ev.on("messages.upsert", async ({ messages, type }) => {
+    if (type !== "notify") return; // skip history sync replays
+
+    for (const raw of messages) {
+      const message = toGroupMessage(raw);
+      if (!message) continue;
+
+      try {
+        const reply = await askApp(message);
+        if (reply) await sock.sendMessage(message.groupId, { text: reply });
+      } catch (error) {
+        console.error("baileys: failed to handle message", message.id, error);
+      }
+    }
+  });
+}
+
+// Only connect when run directly, so tests can import toGroupMessage.
+if (process.argv[1]?.endsWith("baileys.mjs")) {
+  start().catch((error) => {
+    console.error("baileys: failed to start", error);
+    process.exit(1);
+  });
+}
