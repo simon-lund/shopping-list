@@ -69,19 +69,29 @@ export async function POST(request: Request) {
   const url = `${base}/l/${listId}?v=${listVersion(await getItems(listId))}`;
   const trigger = body.trigger?.trim();
 
+  // Say plainly what is and isn't read. Without a trigger every message does
+  // go to a model, and "normal chat I ignore" would imply otherwise — the
+  // group should be able to tell which of the two setups it is in.
   const lines = [
     "Hi — I keep this group's shopping list.",
     "",
     trigger
-      ? `Start a message with "${trigger}" and I'll read it:\n` +
+      ? `I only read messages starting with "${trigger}".\n` +
+        "Everything else here is ignored and never sent anywhere.\n" +
+        "\n" +
         `  ${trigger} we need milk and bread\n` +
         `  ${trigger} got the milk\n` +
-        `  ${trigger} what do we still need?\n` +
-        "\nAnything not starting with that, I ignore completely."
-      : 'Just say what you need — "we need milk and bread", "got the milk",\n' +
-        '"what do we still need?" — and I\'ll keep up. Normal chat I ignore.',
+        `  ${trigger} what do we still need?`
+      : "Just say what you need and I'll keep up:\n" +
+        "\n" +
+        "  we need milk and bread\n" +
+        "  got the milk\n" +
+        "  what do we still need?\n" +
+        "\n" +
+        "To spot those, every message here is read by an AI.\n" +
+        "I only reply when I've actually changed something.",
     "",
-    `The list is always here: ${url}`,
+    `The list: ${url}`,
   ];
 
   return Response.json({ intro: lines.join("\n") });
