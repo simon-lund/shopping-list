@@ -153,6 +153,23 @@ docker compose logs -f baileys   # scan the QR with WhatsApp → Linked devices
 The session is stored in the `baileys-auth` volume, so you pair once. Then add
 the bot's number to your group and carry on as normal.
 
+**The bot answers only in groups you list.** Anyone in a group can add your
+number to another one, and without a guard the bot would start replying there
+and sending those messages to the model. So `ALLOWED_GROUPS` is deny-by-default:
+
+```
+ALLOWED_GROUPS=120363000111222333@g.us,120363999888777666@g.us
+```
+
+Leave it empty and the bot responds nowhere. To find a group's JID, send any
+message in it and read the worker logs:
+
+```
+baileys: ignoring 120363000111222333@g.us (Family) — add it to ALLOWED_GROUPS to enable
+```
+
+Paste that in and redeploy. Either the full JID or just the numeric part works.
+
 The worker (`worker/baileys.mjs`) does nothing but shuttle messages: group text
 goes to the app's `/api/bot` endpoint, and whatever comes back is posted to the
 group. All the list logic is shared with the Cloud API path — same

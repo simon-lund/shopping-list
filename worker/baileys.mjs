@@ -23,6 +23,31 @@ const SECRET = process.env.BOT_SHARED_SECRET;
 const AUTH_DIR = process.env.BAILEYS_AUTH_DIR || "/data/auth";
 
 /**
+ * Comma-separated group JIDs the bot is allowed to act in.
+ *
+ * Deny by default: an account can be added to any group by anyone in it, and
+ * without this the bot would start answering — and sending every message to
+ * the model — in groups nobody meant to include. Unlisted groups are logged
+ * once so you can copy the JID in, then ignored.
+ */
+export function parseAllowList(raw) {
+  return (raw ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
+}
+
+/** Accepts the full JID or just the numeric part, since people paste both. */
+export function isAllowed(jid, allowList) {
+  if (!allowList.length) return false;
+  // Group JIDs only, so a bare numeric entry can never also match a DM from
+  // the same number.
+  if (!jid.endsWith("@g.us")) return false;
+  const local = jid.slice(0, -"@g.us".length);
+  return allowList.some((entry) => entry === jid || entry === local);
+}
+
+const ALLOW_LIST = parseAllowList(process.env.ALLOWED_GROUPS);
+const announced = new Set();
+
+/**
  * Pulls a group text message out of a Baileys message, or returns null if it
  * isn't one we should act on. Exported so it can be tested without a socket.
  */
@@ -105,6 +130,27 @@ async function start() {
     for (const raw of messages) {
       const message = toGroupMessage(raw);
       if (!message) continue;
+
+      const permitted = isAllowed(message.groupId, ALLOW_LIST);
+
+      // Say something the first time each group turns up, so the JID can be
+      // read out of the logs and pasted into ALLOWED_GROUPS.
+      if (!announced.has(message.groupId)) {
+        announced.add(message.groupId);
+        let name = "";
+        try {
+          name = (await sock.groupMetadata(message.groupId))?.subject ?? "";
+        } catch {
+          // Metadata is a nicety; the JID is the part that matters.
+        }
+        console.log(
+          permitted
+            ? `baileys: active in ${message.groupId}${name ? ` (${name})` : ""}`
+            : `baileys: ignoring ${message.groupId}${name ? ` (${name})` : ""} — add it to ALLOWED_GROUPS to enable`,
+        );
+      }
+
+      if (!permitted) continue;
 
       try {
         const reply = await askApp(message);

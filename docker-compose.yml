@@ -88,6 +88,9 @@ services:
       # inactive, which would break a plain `docker compose up`. The worker
       # exits with a clear message if it is unset.
       BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-}
+      # Comma-separated group JIDs. Empty means the bot acts in no group at
+      # all; unlisted groups are logged once so you can copy the JID in.
+      ALLOWED_GROUPS: ${ALLOWED_GROUPS:-}
     volumes:
       - baileys-auth:/data
     depends_on:
