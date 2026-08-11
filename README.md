@@ -163,6 +163,16 @@ instead*. There is no QR option: scanning one needs a second screen, which is
 exactly what you don't have when the phone being linked is also the one reading
 the logs.
 
+**Have WhatsApp open on the Linked devices screen before you deploy.** The code
+is valid for roughly two minutes; miss it and the worker simply issues another,
+but you will be waiting through a reconnect each time.
+
+If the session is ever rejected — a pairing that never completed, or the device
+logged out from the phone — the worker deletes the stored credentials and pairs
+again from scratch, backing off up to a minute between attempts. Stale
+credentials can never be retried forever, and a container restart policy would
+otherwise turn that into a login attempt every few seconds.
+
 The session lives in the `baileys-auth` volume, so you pair once. Then add the
 bot's number to your group and carry on as normal.
 

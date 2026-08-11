@@ -10,6 +10,7 @@
  * endpoint, and whatever comes back gets posted to the group. The list logic
  * lives in the app.
  */
+import { rm } from "node:fs/promises";
 import {
   DisconnectReason,
   isJidGroup,
@@ -64,6 +65,20 @@ const INCLUDE_OWN = process.env.BAILEYS_INCLUDE_OWN_MESSAGES === "true";
 // Ids of messages this worker sent, so they are never treated as input.
 // Bounded: only recent sends can come back on the stream.
 const sentIds = new Set();
+
+/**
+ * Reconnect delay, backing off to a minute.
+ *
+ * A rejected session used to exit the process, and the container's restart
+ * policy turned that into a login attempt every few seconds — which is both
+ * useless and the sort of traffic that gets a number flagged.
+ */
+export function reconnectDelayMs(attempt) {
+  return Math.min(60_000, 3_000 * 2 ** Math.max(0, attempt - 1));
+}
+
+let attempts = 0;
+
 function rememberSent(id) {
   if (!id) return;
   sentIds.add(id);
@@ -155,8 +170,9 @@ async function start() {
         const code = await sock.requestPairingCode(PAIR_NUMBER);
         console.log(
           `\nbaileys: pairing code for +${PAIR_NUMBER}: ${code}\n` +
-            "Enter it in WhatsApp -> Linked devices -> Link a device ->\n" +
-            "\"Link with phone number instead\". It expires in a few minutes.\n",
+            "Enter it NOW in WhatsApp -> Linked devices -> Link a device ->\n" +
+            "\"Link with phone number instead\". It expires in about two\n" +
+            "minutes; after that a new code is issued automatically.\n",
         );
       } catch (error) {
         console.error("baileys: could not request a pairing code", error);
@@ -165,15 +181,32 @@ async function start() {
   }
 
   sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
-    if (connection === "open") console.log("baileys: connected");
+    if (connection === "open") {
+      attempts = 0;
+      console.log("baileys: connected");
+    }
     if (connection === "close") {
       const status = lastDisconnect?.error?.output?.statusCode;
+      attempts += 1;
+      const wait = reconnectDelayMs(attempts);
+
       if (status === DisconnectReason.loggedOut) {
-        console.error("baileys: logged out — delete the auth dir and re-pair");
-        process.exit(1);
+        // The stored credentials will never work again — whether the pairing
+        // never completed or the device was logged out from the phone. Keeping
+        // them just fails forever, so clear them and pair afresh.
+        console.error(
+          "baileys: session rejected, clearing credentials and starting a new pairing",
+        );
+        rm(AUTH_DIR, { recursive: true, force: true })
+          .catch((error) => console.error("baileys: could not clear", AUTH_DIR, error))
+          .finally(() => setTimeout(start, wait));
+        return;
       }
-      console.warn(`baileys: disconnected (${status}), reconnecting`);
-      setTimeout(start, 3000);
+
+      console.warn(
+        `baileys: disconnected (${status}), reconnecting in ${Math.round(wait / 1000)}s`,
+      );
+      setTimeout(start, wait);
     }
   });
 
